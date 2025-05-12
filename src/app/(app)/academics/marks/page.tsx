@@ -9,55 +9,77 @@ import { useEffect, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from '@/components/ui/skeleton';
 
-// Mock data for student marks
-const MOCK_MARKS_SEM1: SubjectMark[] = [
-  { id: 'S1M1', subjectName: 'Applied Mathematics I', subjectCode: 'MA101', ia1: 20, ia2: 22, ia3: 25, assignment: 8, semester: 1, credits: 4 },
-  { id: 'S1M2', subjectName: 'Engineering Physics', subjectCode: 'PH102', ia1: 18, ia2: 20, ia3: 23, assignment: 9, semester: 1, credits: 3 },
-  { id: 'S1M3', subjectName: 'Basic Electrical Engineering', subjectCode: 'EE103', ia1: 22, ia2: 24, ia3: 21, assignment: 7, semester: 1, credits: 3 },
-  { id: 'S1M4', subjectName: 'Programming in C', subjectCode: 'CS104', ia1: 25, ia2: 25, ia3: 24, assignment: 10, semester: 1, credits: 4 },
-];
-const MOCK_MARKS_SEM2: SubjectMark[] = [
-  { id: 'S2M1', subjectName: 'Applied Mathematics II', subjectCode: 'MA201', ia1: 19, ia2: 21, ia3: 24, assignment: 7, semester: 2, credits: 4 },
-  { id: 'S2M2', subjectName: 'Engineering Chemistry', subjectCode: 'CH202', ia1: 23, ia2: 22, ia3: 25, assignment: 9, semester: 2, credits: 3 },
-  { id: 'S2M3', subjectName: 'Engineering Mechanics', subjectCode: 'ME203', ia1: 20, ia2: 18, ia3: 22, assignment: 8, semester: 2, credits: 3 },
-  { id: 'S2M4', subjectName: 'Data Structures', subjectCode: 'CS204', ia1: 24, ia2: 23, ia3: 25, assignment: 10, semester: 2, credits: 4 },
-];
+// Mock data fetch - adjusted to potentially fetch all marks for a student and then filter by semester client-side,
+// or fetch filtered by semester if backend supports it.
+// This assumes marks are stored keyed by studentId-subjectCode-semester or similar.
 
-const MOCK_ALL_MARKS: Record<string, SubjectMark[]> = {
-  "1": MOCK_MARKS_SEM1,
-  "2": MOCK_MARKS_SEM2,
-}
-
-// Mock function to fetch marks
-const fetchStudentMarks = async (studentId: string, semester: string): Promise<SubjectMark[]> => {
-  console.log(`Fetching marks for student ${studentId}, semester ${semester}`);
+// MOCK: Function to fetch marks for a specific student (replace with actual API call)
+// This function needs to retrieve marks possibly stored under various keys
+// (e.g., marks-${semester}-${section}-${subjectCode} or marks-${studentId}-${subjectCode})
+// and consolidate them for the specific student.
+const fetchStudentMarksData = async (studentId: string): Promise<SubjectMark[]> => {
+  console.log(`Fetching all marks data potentially relevant for student ${studentId}`);
   await new Promise(resolve => setTimeout(resolve, 700)); // Simulate API delay
-  return MOCK_ALL_MARKS[semester] || [];
+
+  const allMarks: SubjectMark[] = [];
+  // Iterate through possible storage keys (this is inefficient, needs backend logic)
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('marks-')) {
+      try {
+        const data = JSON.parse(localStorage.getItem(key) || '[]');
+        if (Array.isArray(data)) {
+          // Filter marks for the current student from section/subject storage
+          allMarks.push(...data.filter(mark => mark.studentId === studentId));
+        } else if (typeof data === 'object' && data !== null && data.studentId === studentId) {
+           // Handle cases where data might be stored per student per subject
+           allMarks.push(data);
+        }
+      } catch (e) {
+        console.error(`Error parsing localStorage key ${key}:`, e);
+      }
+    }
+  }
+   // Remove duplicates based on a unique key like 'id' or combo of studentId+subjectCode+semester
+   const uniqueMarks = Array.from(new Map(allMarks.map(mark => [`${mark.studentId}-${mark.subjectCode}-${mark.semester}`, mark])).values());
+   console.log(`Found ${uniqueMarks.length} unique mark entries for student ${studentId}`);
+   return uniqueMarks;
 };
 
-const calculateTotal = (mark: SubjectMark) => {
-  const iaTotal = ((mark.ia1 || 0) + (mark.ia2 || 0) + (mark.ia3 || 0)) / 3; // Example: average of 3 IAs
-  return Math.round(iaTotal + (mark.assignment || 0)); // This logic can be very specific
-};
 
 export default function MarksPage() {
   const { user } = useAuth();
-  const [marks, setMarks] = useState<SubjectMark[]>([]);
+  const [allMarks, setAllMarks] = useState<SubjectMark[]>([]);
+  const [filteredMarks, setFilteredMarks] = useState<SubjectMark[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedSemester, setSelectedSemester] = useState<string>("1");
+  const [selectedSemester, setSelectedSemester] = useState<string>("3"); // Default to sem 3 as per sample
   const semesters = ["1", "2", "3", "4", "5", "6", "7", "8"]; // Example semesters
 
   useEffect(() => {
     if (user && user.role === 'Student') {
       setIsLoading(true);
-      fetchStudentMarks(user.id, selectedSemester).then(data => {
-        setMarks(data);
+      fetchStudentMarksData(user.id).then(data => {
+        setAllMarks(data);
+        // Initial filter based on default selected semester
+        setFilteredMarks(data.filter(mark => mark.semester === parseInt(selectedSemester, 10)));
         setIsLoading(false);
+      }).catch(error => {
+         console.error("Failed to fetch marks:", error);
+         toast({ title: "Error", description: "Could not load marks.", variant: "destructive" });
+         setIsLoading(false);
       });
     } else {
       setIsLoading(false); // Not a student or no user
     }
-  }, [user, selectedSemester]);
+  }, [user]); // Fetch all marks once when user loads
+
+  // Filter marks when semester selection changes
+   useEffect(() => {
+    if (allMarks.length > 0) {
+       setFilteredMarks(allMarks.filter(mark => mark.semester === parseInt(selectedSemester, 10)));
+    }
+  }, [selectedSemester, allMarks]);
+
 
   if (!user || user.role !== 'Student') {
     return (
@@ -68,7 +90,7 @@ export default function MarksPage() {
       </div>
     );
   }
-  
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -90,44 +112,45 @@ export default function MarksPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Marks for Semester {selectedSemester}</CardTitle>
-          <CardDescription>Overview of your Internal Assessment (IA) and assignment marks.</CardDescription>
+          <CardDescription>Overview of your Internal Assessment (IA) and Assignment marks.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="space-y-4">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="flex items-center space-x-4 p-2 border-b">
-                  <Skeleton className="h-8 w-1/3" />
-                  <Skeleton className="h-8 w-1/6" />
-                  <Skeleton className="h-8 w-1/6" />
-                  <Skeleton className="h-8 w-1/6" />
-                  <Skeleton className="h-8 w-1/6" />
+                   {/* Update skeleton to match new columns */}
+                   <Skeleton className="h-8 w-1/4" /> {/* Subject Name */}
+                   <Skeleton className="h-8 w-1/6" /> {/* Subject Code */}
+                   <Skeleton className="h-8 w-1/6" /> {/* IA 1 */}
+                   <Skeleton className="h-8 w-1/6" /> {/* IA 2 */}
+                   <Skeleton className="h-8 w-1/6" /> {/* Assign 1 */}
+                   <Skeleton className="h-8 w-1/6" /> {/* Assign 2 */}
                 </div>
               ))}
             </div>
-          ) : marks.length > 0 ? (
+          ) : filteredMarks.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[300px]">Subject Name</TableHead>
                   <TableHead>Subject Code</TableHead>
-                  <TableHead className="text-center">IA 1</TableHead>
-                  <TableHead className="text-center">IA 2</TableHead>
-                  <TableHead className="text-center">IA 3</TableHead>
-                  <TableHead className="text-center">Assignment</TableHead>
-                  <TableHead className="text-center text-primary font-semibold">Total (Est.)</TableHead>
+                  <TableHead className="text-center">IA 1 (Max 50)</TableHead>
+                  <TableHead className="text-center">IA 2 (Max 50)</TableHead>
+                  <TableHead className="text-center">Assignment 1 (Max 20)</TableHead>
+                  <TableHead className="text-center">Assignment 2 (Max 20)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {marks.map((mark) => (
+                {filteredMarks.map((mark) => (
                   <TableRow key={mark.id}>
                     <TableCell className="font-medium">{mark.subjectName}</TableCell>
                     <TableCell>{mark.subjectCode}</TableCell>
-                    <TableCell className="text-center">{mark.ia1 ?? 'N/A'}</TableCell>
-                    <TableCell className="text-center">{mark.ia2 ?? 'N/A'}</TableCell>
-                    <TableCell className="text-center">{mark.ia3 ?? 'N/A'}</TableCell>
-                    <TableCell className="text-center">{mark.assignment ?? 'N/A'}</TableCell>
-                    <TableCell className="text-center text-primary font-semibold">{calculateTotal(mark)}</TableCell>
+                    <TableCell className="text-center">{mark.ia1_50 ?? 'N/A'}</TableCell>
+                    <TableCell className="text-center">{mark.ia2_50 ?? 'N/A'}</TableCell>
+                    <TableCell className="text-center">{mark.assignment1_20 ?? 'N/A'}</TableCell>
+                    <TableCell className="text-center">{mark.assignment2_20 ?? 'N/A'}</TableCell>
+                    {/* Remove the calculated Total column */}
                   </TableRow>
                 ))}
               </TableBody>

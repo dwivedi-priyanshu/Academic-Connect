@@ -7,205 +7,322 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
-import type { StudentProfile, SubjectMark } from '@/types'; // Assuming SubjectMark is defined
-import { Edit3, UserCheck, Save, PlusCircle, Trash2 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import type { SubjectMark } from '@/types';
+import { Edit3, UploadCloud, Save, BarChart, FileWarning } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
+import { FileUploadInput } from '@/components/core/FileUploadInput';
+import { uploadMarks, saveEditedMarks, fetchMarksFromStorage } from '@/actions/marks-upload'; // Import server actions
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from '@/components/ui/skeleton';
 
-// Mock data
-const MOCK_STUDENTS_FOR_FACULTY: StudentProfile[] = [
-  { userId: 'student001', admissionId: 'S001', fullName: 'Alice Wonderland', department: 'Computer Science', year: 2, section: 'A', dateOfBirth: '', contactNumber: '', address: '', parentName: '', parentContact: '' },
-  { userId: 'student005', admissionId: 'S005', fullName: 'Edward Scissorhands', department: 'Computer Science', year: 2, section: 'B', dateOfBirth: '', contactNumber: '', address: '', parentName: '', parentContact: '' },
-];
-
-const MOCK_SUBJECTS_FOR_CS_YEAR2: Partial<SubjectMark>[] = [
-  { subjectCode: 'CS201', subjectName: 'Data Structures', semester: 3, credits: 4 },
-  { subjectCode: 'CS202', subjectName: 'Discrete Mathematics', semester: 3, credits: 3 },
-  { subjectCode: 'MA201', subjectName: 'Probability & Statistics', semester: 3, credits: 3 },
-];
-
-
-// Mock API functions
-const fetchFacultyStudents = async (facultyId: string): Promise<StudentProfile[]> => {
-  console.log(`Fetching students for faculty ${facultyId}`);
-  await new Promise(resolve => setTimeout(resolve, 500));
-  return MOCK_STUDENTS_FOR_FACULTY; // Filter based on faculty's courses/department
+// Mock Data (can be fetched from backend)
+const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
+const SECTIONS = ["A", "B", "C", "D"];
+const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
+  "1": [{ code: "MA101", name: "Applied Mathematics I" }, { code: "PH102", name: "Engineering Physics" }],
+  "2": [{ code: "MA201", name: "Applied Mathematics II" }, { code: "CH202", name: "Engineering Chemistry" }],
+  "3": [{ code: "CS201", name: "Data Structures" }, { code: "CS202", name: "Discrete Mathematics" }, { code: "MA201", name: "Probability & Statistics" }, { code: "DDCO", name: "Digital Design & Comp Org"}], // Added DDCO based on excel sample
+  // Add more semesters and subjects
 };
 
-const fetchSubjectsForClass = async (department: string, year: number, section: string): Promise<Partial<SubjectMark>[]> => {
-  console.log(`Fetching subjects for ${department} Year ${year} Section ${section}`);
-  await new Promise(resolve => setTimeout(resolve, 300));
-  if (department === 'Computer Science' && year === 2) {
-    return MOCK_SUBJECTS_FOR_CS_YEAR2;
-  }
-  return [];
+// Function to calculate basic summary statistics
+const calculateSummary = (marks: SubjectMark[]) => {
+    if (!marks || marks.length === 0) {
+        return { count: 0, avgIA1: 0, avgIA2: 0, avgAssign1: 0, avgAssign2: 0 };
+    }
+    const validMarks = marks.filter(m => m.ia1_50 !== null || m.ia2_50 !== null || m.assignment1_20 !== null || m.assignment2_20 !== null);
+    const count = validMarks.length;
+
+    const sumIA1 = validMarks.reduce((sum, m) => sum + (m.ia1_50 || 0), 0);
+    const sumIA2 = validMarks.reduce((sum, m) => sum + (m.ia2_50 || 0), 0);
+    const sumAssign1 = validMarks.reduce((sum, m) => sum + (m.assignment1_20 || 0), 0);
+    const sumAssign2 = validMarks.reduce((sum, m) => sum + (m.assignment2_20 || 0), 0);
+
+    const countIA1 = validMarks.filter(m => m.ia1_50 !== null).length;
+    const countIA2 = validMarks.filter(m => m.ia2_50 !== null).length;
+    const countAssign1 = validMarks.filter(m => m.assignment1_20 !== null).length;
+    const countAssign2 = validMarks.filter(m => m.assignment2_20 !== null).length;
+
+
+    return {
+        count,
+        avgIA1: countIA1 > 0 ? (sumIA1 / countIA1).toFixed(2) : 'N/A',
+        avgIA2: countIA2 > 0 ? (sumIA2 / countIA2).toFixed(2) : 'N/A',
+        avgAssign1: countAssign1 > 0 ? (sumAssign1 / countAssign1).toFixed(2) : 'N/A',
+        avgAssign2: countAssign2 > 0 ? (sumAssign2 / countAssign2).toFixed(2) : 'N/A',
+    };
 };
-
-const fetchStudentMarksForSubject = async (studentId: string, subjectCode: string): Promise<SubjectMark | null> => {
-    // Simulate fetching existing marks.
-    console.log(`Fetching marks for ${studentId}, subject ${subjectCode}`);
-    await new Promise(resolve => setTimeout(resolve, 200));
-    const stored = localStorage.getItem(`marks-${studentId}-${subjectCode}`);
-    return stored ? JSON.parse(stored) : null;
-}
-
-const saveStudentMarksBatch = async (marksToSave: SubjectMark[], facultyId: string): Promise<boolean> => {
-  console.log('Saving marks batch:', marksToSave, 'by faculty:', facultyId);
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  marksToSave.forEach(mark => {
-      localStorage.setItem(`marks-${mark.studentId}-${mark.subjectCode}`, JSON.stringify(mark));
-  });
-  return true;
-};
-
 
 export default function MarksEntryPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [students, setStudents] = useState<StudentProfile[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState<StudentProfile | null>(null);
-  const [subjects, setSubjects] = useState<Partial<SubjectMark>[]>([]);
+  const [selectedSemester, setSelectedSemester] = useState<string>("");
+  const [selectedSection, setSelectedSection] = useState<string>("");
+  const [selectedSubject, setSelectedSubject] = useState<{ code: string, name: string } | null>(null);
+  const [subjectsForSemester, setSubjectsForSemester] = useState<{ code: string, name: string }[]>([]);
+  const [marksFile, setMarksFile] = useState<File | null>(null);
   const [marksData, setMarksData] = useState<SubjectMark[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSavingEdits, setIsSavingEdits] = useState(false);
+  const [uploadErrors, setUploadErrors] = useState<string[]>([]);
 
+  // Fetch existing marks when selection changes
   useEffect(() => {
-    if (user && user.role === 'Faculty') {
-      fetchFacultyStudents(user.id).then(data => {
-        setStudents(data);
-        setIsLoading(false);
+    const loadMarks = async () => {
+      if (selectedSemester && selectedSection && selectedSubject && user) {
+        setIsLoading(true);
+        setUploadErrors([]); // Clear previous errors
+        // MOCK: Fetch from local storage; replace with API call
+        try {
+          // Simulating fetch call for existing marks
+          const existingMarks = await fetchMarksFromStorage(
+              parseInt(selectedSemester),
+              selectedSection,
+              selectedSubject.code
+          );
+          setMarksData(existingMarks);
+        } catch (error) {
+            console.error("Error fetching marks from storage:", error);
+            toast({ title: "Error", description: "Could not fetch existing marks.", variant: "destructive" });
+            setMarksData([]); // Clear data on error
+        } finally {
+             setIsLoading(false);
+        }
+
+      } else {
+        setMarksData([]); // Clear marks if selection is incomplete
+      }
+    };
+    loadMarks();
+  }, [selectedSemester, selectedSection, selectedSubject, user, toast]);
+
+
+  // Update subjects when semester changes
+  useEffect(() => {
+    setSubjectsForSemester(SUBJECTS_BY_SEMESTER[selectedSemester] || []);
+    setSelectedSubject(null); // Reset subject selection when semester changes
+  }, [selectedSemester]);
+
+
+  const handleFileUpload = async () => {
+    if (!marksFile || !selectedSemester || !selectedSection || !selectedSubject || !user) {
+      toast({ title: "Missing Information", description: "Please select Semester, Section, Subject and upload a file.", variant: "destructive" });
+      return;
+    }
+    setIsUploading(true);
+    setUploadErrors([]);
+
+    try {
+      const fileBuffer = await marksFile.arrayBuffer();
+      const fileData = new Uint8Array(fileBuffer);
+
+      const result = await uploadMarks({
+        fileData,
+        semester: parseInt(selectedSemester),
+        section: selectedSection,
+        subjectCode: selectedSubject.code,
+        subjectName: selectedSubject.name,
+        facultyId: user.id,
       });
-    } else {
-      setIsLoading(false);
-    }
-  }, [user]);
 
-  useEffect(() => {
-    if (selectedStudent) {
-      setIsLoading(true);
-      fetchSubjectsForClass(selectedStudent.department, selectedStudent.year, selectedStudent.section)
-        .then(async subjectList => {
-          setSubjects(subjectList);
-          const initialMarksPromises = subjectList.map(async sub => {
-            const existingMark = await fetchStudentMarksForSubject(selectedStudent.userId, sub.subjectCode!);
-            return existingMark || {
-              id: `${selectedStudent.userId}-${sub.subjectCode}`, // Composite ID
-              studentId: selectedStudent.userId,
-              subjectCode: sub.subjectCode!,
-              subjectName: sub.subjectName!,
-              semester: sub.semester!,
-              credits: sub.credits!,
-              ia1: null, ia2: null, ia3: null, assignment: null,
-            } as SubjectMark;
-          });
-          const initialMarks = await Promise.all(initialMarksPromises);
-          setMarksData(initialMarks);
-          setIsLoading(false);
-        });
-    } else {
-      setSubjects([]);
-      setMarksData([]);
+      if (result.success) {
+        setMarksData(result.processedMarks || []);
+        toast({ title: "Upload Successful", description: result.message, className: "bg-success text-success-foreground" });
+        if (result.errorDetails && result.errorDetails.length > 0) {
+            setUploadErrors(result.errorDetails);
+        }
+      } else {
+        toast({ title: "Upload Failed", description: result.message, variant: "destructive" });
+        setUploadErrors(result.errorDetails || [result.message]);
+      }
+    } catch (error: any) {
+      console.error("File upload error:", error);
+      toast({ title: "Upload Error", description: `An unexpected error occurred: ${error.message}`, variant: "destructive" });
+       setUploadErrors([`An unexpected error occurred: ${error.message}`]);
+    } finally {
+      setIsUploading(false);
+      setMarksFile(null); // Clear the file input state
     }
-  }, [selectedStudent]);
-
-  const handleStudentSelect = (studentId: string) => {
-    const student = students.find(s => s.userId === studentId);
-    setSelectedStudent(student || null);
   };
 
-  const handleMarkChange = (subjectCode: string, field: keyof SubjectMark, value: string) => {
+ const handleMarkChange = (studentId: string, field: keyof SubjectMark, value: string) => {
     const numericValue = value === '' ? null : parseInt(value, 10);
-    // Validate marks (0-25 for IA, 0-10 for assignment typically)
-    if (numericValue !== null && (numericValue < 0 || 
-        (['ia1','ia2','ia3'].includes(field as string) && numericValue > 25) ||
-        (field === 'assignment' && numericValue > 10))
-    ) {
-        toast({ title: "Invalid Mark", description: `Mark for ${field} must be within valid range.`, variant: "destructive" });
+    const maxValues = { ia1_50: 50, ia2_50: 50, assignment1_20: 20, assignment2_20: 20 };
+
+    // Validate marks
+    if (numericValue !== null && (numericValue < 0 || (field in maxValues && numericValue > (maxValues as any)[field]))) {
+        toast({ title: "Invalid Mark", description: `Mark for ${field} must be between 0 and ${field in maxValues ? (maxValues as any)[field] : 'allowed range'}.`, variant: "destructive" });
         return;
     }
 
     setMarksData(prev =>
       prev.map(mark =>
-        mark.subjectCode === subjectCode ? { ...mark, [field]: numericValue } : mark
+        mark.studentId === studentId ? { ...mark, [field]: numericValue } : mark
       )
     );
   };
 
-  const handleSubmitMarks = async () => {
-    if (!user || !selectedStudent || marksData.length === 0) return;
-    setIsSubmitting(true);
-    const success = await saveStudentMarksBatch(marksData, user.id);
-    if (success) {
-      toast({ title: "Marks Saved", description: `Marks for ${selectedStudent.fullName} have been successfully saved.`, className: "bg-success text-success-foreground" });
-    } else {
-      toast({ title: "Save Failed", description: "Could not save marks. Please try again.", variant: "destructive" });
+
+  const handleSaveChanges = async () => {
+    if (!user || !selectedSemester || !selectedSection || !selectedSubject || marksData.length === 0) {
+        toast({ title: "Cannot Save", description: "No marks data available or selection incomplete.", variant: "destructive" });
+        return;
     }
-    setIsSubmitting(false);
-  };
-  
+    setIsSavingEdits(true);
+    try {
+        const result = await saveEditedMarks(
+            marksData,
+            parseInt(selectedSemester),
+            selectedSection,
+            selectedSubject.code,
+            user.id
+        );
+        if (result.success) {
+            toast({ title: "Changes Saved", description: result.message, className: "bg-success text-success-foreground" });
+        } else {
+            toast({ title: "Save Failed", description: result.message, variant: "destructive" });
+        }
+    } catch (error: any) {
+        console.error("Error saving edited marks:", error);
+        toast({ title: "Save Error", description: `An unexpected error occurred: ${error.message}`, variant: "destructive" });
+    } finally {
+        setIsSavingEdits(false);
+    }
+};
+
+
+  const summary = useMemo(() => calculateSummary(marksData), [marksData]);
+
   if (!user || user.role !== 'Faculty') {
     return <p>Access denied. This page is for faculty members only.</p>;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold flex items-center"><Edit3 className="mr-2 h-8 w-8 text-primary" /> Marks Entry</h1>
-      </div>
+      <h1 className="text-3xl font-bold flex items-center"><Edit3 className="mr-2 h-8 w-8 text-primary" /> Marks Entry</h1>
 
+      {/* Step 1: Selection */}
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Select Student</CardTitle>
-          <CardDescription>Choose a student to enter or update their marks.</CardDescription>
-          <Select onValueChange={handleStudentSelect} disabled={isLoading}>
-            <SelectTrigger className="w-full md:w-1/2 mt-2 bg-background">
-              <SelectValue placeholder="Select a student..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectLabel>Students</SelectLabel>
-                {students.map(student => (
-                  <SelectItem key={student.userId} value={student.userId}>
-                    {student.fullName} ({student.admissionId}) - {student.department}, Year {student.year}, Sec {student.section}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          <CardTitle>Select Class and Subject</CardTitle>
+          <CardDescription>Choose the semester, section, and subject to enter marks for.</CardDescription>
         </CardHeader>
-        
-        {selectedStudent && (
+        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-1">
+            <Label htmlFor="semester">Semester</Label>
+            <Select value={selectedSemester} onValueChange={setSelectedSemester}>
+              <SelectTrigger id="semester"><SelectValue placeholder="Select Semester" /></SelectTrigger>
+              <SelectContent>
+                {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="section">Section</Label>
+            <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedSemester}>
+              <SelectTrigger id="section"><SelectValue placeholder="Select Section" /></SelectTrigger>
+              <SelectContent>
+                {SECTIONS.map(sec => <SelectItem key={sec} value={sec}>Section {sec}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="subject">Subject</Label>
+            <Select
+              value={selectedSubject?.code || ""}
+              onValueChange={(code) => setSelectedSubject(subjectsForSemester.find(s => s.code === code) || null)}
+              disabled={!selectedSection || subjectsForSemester.length === 0}
+            >
+              <SelectTrigger id="subject"><SelectValue placeholder="Select Subject" /></SelectTrigger>
+              <SelectContent>
+                {subjectsForSemester.length > 0 ? (
+                    subjectsForSemester.map(sub => <SelectItem key={sub.code} value={sub.code}>{sub.name} ({sub.code})</SelectItem>)
+                ) : (
+                    <SelectItem value="-" disabled>No subjects for this semester</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Step 2: Upload */}
+       {selectedSemester && selectedSection && selectedSubject && (
+            <Card className="shadow-lg">
+                <CardHeader>
+                <CardTitle>Upload Marks File</CardTitle>
+                <CardDescription>Upload the Excel sheet containing marks for {selectedSubject.name} ({selectedSubject.code}), Semester {selectedSemester}, Section {selectedSection}.</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col md:flex-row items-start md:items-end gap-4">
+                 <FileUploadInput
+                    id="marksFile"
+                    label="Select Excel File (.xlsx)"
+                    onFileChange={setMarksFile}
+                    accept=".xlsx"
+                    currentFile={marksFile?.name} // Show selected file name
+                />
+                <Button onClick={handleFileUpload} disabled={!marksFile || isUploading}>
+                    <UploadCloud className="mr-2 h-4 w-4" /> {isUploading ? 'Uploading...' : 'Upload & Process'}
+                </Button>
+                </CardContent>
+            </Card>
+        )}
+
+         {/* Upload Errors Display */}
+        {uploadErrors.length > 0 && (
+             <Alert variant="destructive">
+                 <FileWarning className="h-4 w-4"/>
+                <AlertTitle>Upload Issues Detected</AlertTitle>
+                <AlertDescription>
+                    <ul className="list-disc pl-5 space-y-1 max-h-32 overflow-y-auto">
+                    {uploadErrors.map((err, i) => <li key={i} className="text-xs">{err}</li>)}
+                    </ul>
+                </AlertDescription>
+            </Alert>
+        )}
+
+      {/* Step 3: Display & Edit Marks */}
+       {(marksData.length > 0 || isLoading) && selectedSubject && (
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle>Marks for {selectedSubject.name} - Section {selectedSection}</CardTitle>
+            <CardDescription>View and edit the uploaded marks. Click 'Save Changes' after editing.</CardDescription>
+          </CardHeader>
           <CardContent>
-            <CardTitle className="text-xl mb-4">Entering Marks for: {selectedStudent.fullName}</CardTitle>
-            {isLoading && marksData.length === 0 ? (
-              <p>Loading subjects and marks...</p> // Skeleton for table rows
-            ) : subjects.length > 0 ? (
+            {isLoading ? (
+                 <div className="space-y-2">
+                    {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+                 </div>
+            ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Subject Code</TableHead>
-                      <TableHead>Subject Name</TableHead>
-                      <TableHead className="text-center">IA 1</TableHead>
-                      <TableHead className="text-center">IA 2</TableHead>
-                      <TableHead className="text-center">IA 3</TableHead>
-                      <TableHead className="text-center">Assignment</TableHead>
+                      <TableHead className="w-[120px]">USN</TableHead>
+                      <TableHead>Student Name</TableHead>
+                      <TableHead className="text-center">IA 1 (50)</TableHead>
+                      <TableHead className="text-center">IA 2 (50)</TableHead>
+                      <TableHead className="text-center">Assign 1 (20)</TableHead>
+                      <TableHead className="text-center">Assign 2 (20)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {marksData.map((markEntry) => (
-                      <TableRow key={markEntry.subjectCode}>
-                        <TableCell>{markEntry.subjectCode}</TableCell>
-                        <TableCell>{markEntry.subjectName}</TableCell>
-                        {(['ia1', 'ia2', 'ia3', 'assignment'] as const).map(field => (
+                      <TableRow key={markEntry.id}>
+                        <TableCell className="font-mono text-xs">{markEntry.usn}</TableCell>
+                        <TableCell className="font-medium">{markEntry.studentName}</TableCell>
+                        {(['ia1_50', 'ia2_50', 'assignment1_20', 'assignment2_20'] as const).map(field => (
                           <TableCell key={field}>
                             <Input
                               type="number"
                               className="w-20 text-center mx-auto bg-background"
-                              value={markEntry[field] === null ? '' : String(markEntry[field])}
-                              onChange={(e) => handleMarkChange(markEntry.subjectCode, field, e.target.value)}
+                              value={markEntry[field] === null || markEntry[field] === undefined ? '' : String(markEntry[field])}
+                              onChange={(e) => handleMarkChange(markEntry.studentId, field, e.target.value)}
                               min="0"
-                              max={field === 'assignment' ? "10" : "25"}
+                              max={field.includes('50') ? "50" : "20"} // Dynamic max based on field name
+                              disabled={isSavingEdits}
                             />
                           </TableCell>
                         ))}
@@ -214,17 +331,52 @@ export default function MarksEntryPage() {
                   </TableBody>
                 </Table>
                 <div className="mt-6 flex justify-end">
-                  <Button onClick={handleSubmitMarks} disabled={isSubmitting || isLoading}>
-                    <Save className="mr-2 h-4 w-4" /> {isSubmitting ? 'Saving...' : 'Save All Marks'}
+                  <Button onClick={handleSaveChanges} disabled={isSavingEdits || isLoading}>
+                    <Save className="mr-2 h-4 w-4" /> {isSavingEdits ? 'Saving...' : 'Save Changes'}
                   </Button>
                 </div>
               </div>
-            ) : (
-              <p className="text-muted-foreground">No subjects found for this student's class, or an error occurred.</p>
             )}
           </CardContent>
-        )}
-      </Card>
+        </Card>
+      )}
+
+      {/* Step 4: Performance Summary */}
+      {marksData.length > 0 && !isLoading && selectedSubject && (
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center"><BarChart className="mr-2 h-5 w-5 text-primary" /> Performance Summary</CardTitle>
+                    <CardDescription>Overall statistics for {selectedSubject.name} - Section {selectedSection}.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+                        <div className="bg-muted/50 p-4 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Students</p>
+                            <p className="text-2xl font-bold">{summary.count}</p>
+                        </div>
+                        <div className="bg-muted/50 p-4 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Avg. IA 1</p>
+                            <p className="text-2xl font-bold">{summary.avgIA1}</p>
+                        </div>
+                         <div className="bg-muted/50 p-4 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Avg. IA 2</p>
+                            <p className="text-2xl font-bold">{summary.avgIA2}</p>
+                        </div>
+                         <div className="bg-muted/50 p-4 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Avg. Assign 1</p>
+                            <p className="text-2xl font-bold">{summary.avgAssign1}</p>
+                        </div>
+                         <div className="bg-muted/50 p-4 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Avg. Assign 2</p>
+                            <p className="text-2xl font-bold">{summary.avgAssign2}</p>
+                        </div>
+                    </div>
+                    {/* Add more complex charts or visualizations here if needed */}
+                </CardContent>
+            </Card>
+       )}
+
+
     </div>
   );
 }
