@@ -8,49 +8,57 @@ import { ClipboardList, Percent } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from '@/components/ui/skeleton';
+import { fetchMarksFromStorage } from '@/actions/marks-upload'; // Import the server action
+import { useToast } from "@/hooks/use-toast";
 
-// Mock data fetch - adjusted to potentially fetch all marks for a student and then filter by semester client-side,
-// or fetch filtered by semester if backend supports it.
-// This assumes marks are stored keyed by studentId-subjectCode-semester or similar.
-
-// MOCK: Function to fetch marks for a specific student (replace with actual API call)
-// This function needs to retrieve marks possibly stored under various keys
-// (e.g., marks-${semester}-${section}-${subjectCode} or marks-${studentId}-${subjectCode})
-// and consolidate them for the specific student.
-const fetchStudentMarksData = async (studentId: string): Promise<SubjectMark[]> => {
-  console.log(`Fetching all marks data potentially relevant for student ${studentId}`);
+// MOCK: Function to fetch marks for a specific student using the server action
+// This is now a client-side function that CALLS the server action.
+const fetchStudentMarksData = async (studentId: string, semester: number): Promise<SubjectMark[]> => {
+  console.log(`Fetching marks data for student ${studentId}, semester ${semester} using server action`);
   await new Promise(resolve => setTimeout(resolve, 700)); // Simulate API delay
 
+  // PROBLEM: fetchMarksFromStorage needs section and subjectCode, which we don't know easily here.
+  // The current server action `fetchMarksFromStorage` is designed for faculty view (sem, section, subject).
+  // We need a *different* server action or backend endpoint to fetch *all* marks for a given student across all subjects/semesters.
+
+  // TEMPORARY WORKAROUND for MOCK:
+  // Since we can't easily call the existing server action correctly from the student's perspective,
+  // and the server action itself can't use localStorage, we will simulate fetching *all* potential marks
+  // by iterating through localStorage *on the client* where it's available.
+  // This is NOT how a real application should work but allows the demo to function.
+  // A real app needs a dedicated backend API endpoint: GET /api/students/{studentId}/marks
+  console.warn("Using temporary client-side localStorage access for student marks - needs proper backend API.");
   const allMarks: SubjectMark[] = [];
-  // Iterate through possible storage keys (this is inefficient, needs backend logic)
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith('marks-')) {
-      try {
-        const data = JSON.parse(localStorage.getItem(key) || '[]');
-        if (Array.isArray(data)) {
-          // Filter marks for the current student from section/subject storage
-          allMarks.push(...data.filter(mark => mark.studentId === studentId));
-        } else if (typeof data === 'object' && data !== null && data.studentId === studentId) {
-           // Handle cases where data might be stored per student per subject
-           allMarks.push(data);
-        }
-      } catch (e) {
-        console.error(`Error parsing localStorage key ${key}:`, e);
+  if (typeof window !== 'undefined') { // Ensure localStorage is available
+      for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('marks-')) { // Look for keys used by faculty upload/save
+              try {
+                  const data = JSON.parse(localStorage.getItem(key) || '[]');
+                  if (Array.isArray(data)) {
+                      // Filter marks for the current student from section/subject storage
+                      allMarks.push(...data.filter(mark => mark.studentId === studentId));
+                  } else if (typeof data === 'object' && data !== null && data.studentId === studentId) {
+                      // Handle cases where data might be stored per student per subject (less likely with current save)
+                      allMarks.push(data);
+                  }
+              } catch (e) {
+                  console.error(`Error parsing localStorage key ${key}:`, e);
+              }
+          }
       }
-    }
   }
-   // Remove duplicates based on a unique key like 'id' or combo of studentId+subjectCode+semester
-   const uniqueMarks = Array.from(new Map(allMarks.map(mark => [`${mark.studentId}-${mark.subjectCode}-${mark.semester}`, mark])).values());
-   console.log(`Found ${uniqueMarks.length} unique mark entries for student ${studentId}`);
-   return uniqueMarks;
+   // Remove duplicates based on unique ID and filter by the selected semester
+   const uniqueMarks = Array.from(new Map(allMarks.map(mark => [mark.id, mark])).values());
+   console.log(`Found ${uniqueMarks.length} unique mark entries for student ${studentId} via localStorage workaround.`);
+   return uniqueMarks.filter(mark => mark.semester === semester);
 };
 
 
 export default function MarksPage() {
   const { user } = useAuth();
-  const [allMarks, setAllMarks] = useState<SubjectMark[]>([]);
-  const [filteredMarks, setFilteredMarks] = useState<SubjectMark[]>([]);
+  const { toast } = useToast(); // Added toast
+  const [marksForSemester, setMarksForSemester] = useState<SubjectMark[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedSemester, setSelectedSemester] = useState<string>("3"); // Default to sem 3 as per sample
   const semesters = ["1", "2", "3", "4", "5", "6", "7", "8"]; // Example semesters
@@ -58,10 +66,10 @@ export default function MarksPage() {
   useEffect(() => {
     if (user && user.role === 'Student') {
       setIsLoading(true);
-      fetchStudentMarksData(user.id).then(data => {
-        setAllMarks(data);
-        // Initial filter based on default selected semester
-        setFilteredMarks(data.filter(mark => mark.semester === parseInt(selectedSemester, 10)));
+      const semesterNumber = parseInt(selectedSemester, 10);
+      // Using the temporary client-side localStorage access function
+      fetchStudentMarksData(user.id, semesterNumber).then(data => {
+        setMarksForSemester(data);
         setIsLoading(false);
       }).catch(error => {
          console.error("Failed to fetch marks:", error);
@@ -71,14 +79,7 @@ export default function MarksPage() {
     } else {
       setIsLoading(false); // Not a student or no user
     }
-  }, [user]); // Fetch all marks once when user loads
-
-  // Filter marks when semester selection changes
-   useEffect(() => {
-    if (allMarks.length > 0) {
-       setFilteredMarks(allMarks.filter(mark => mark.semester === parseInt(selectedSemester, 10)));
-    }
-  }, [selectedSemester, allMarks]);
+  }, [user, selectedSemester, toast]); // Refetch when user or semester changes
 
 
   if (!user || user.role !== 'Student') {
@@ -129,7 +130,7 @@ export default function MarksPage() {
                 </div>
               ))}
             </div>
-          ) : filteredMarks.length > 0 ? (
+          ) : marksForSemester.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -142,7 +143,7 @@ export default function MarksPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredMarks.map((mark) => (
+                {marksForSemester.map((mark) => (
                   <TableRow key={mark.id}>
                     <TableCell className="font-medium">{mark.subjectName}</TableCell>
                     <TableCell>{mark.subjectCode}</TableCell>

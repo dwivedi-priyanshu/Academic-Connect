@@ -10,13 +10,32 @@ import { USN_TO_USERID_MAP } from '@/types'; // Import the map
 const MarkRowSchema = z.object({
   USN: z.string().trim().min(1, "USN cannot be empty"),
   NAME: z.string().trim().min(1, "Name cannot be empty"),
-  'IAT-1(50)': z.union([z.number(), z.null()]).optional(),
-  'IAT-2(50)': z.union([z.number(), z.null()]).optional(),
-  'Assignment-1(20)': z.union([z.number(), z.null()]).optional(),
-  'Assignment-2(20)': z.union([z.number(), z.null()]).optional(),
+  'IAT-1(50)': z.union([z.number(), z.string(), z.null()]).optional(), // Allow string to handle cases like 'AB'
+  'IAT-2(50)': z.union([z.number(), z.string(), z.null()]).optional(), // Allow string
+  'Assignment-1(20)': z.union([z.number(), z.string(), z.null()]).optional(), // Allow string
+  'Assignment-2(20)': z.union([z.number(), z.string(), z.null()]).optional(), // Allow string
   // Add other columns if needed, e.g.,
   // 'Final Theory CIE(25)': z.union([z.number(), z.null()]).optional(),
+}).transform(data => {
+    // Convert numeric fields, treat non-numeric like 'AB' or empty as null
+    const toNumberOrNull = (val: number | string | null | undefined): number | null => {
+        if (typeof val === 'number') return val;
+        if (typeof val === 'string') {
+            const num = parseFloat(val);
+            return isNaN(num) ? null : num; // Return null if not a valid number (covers 'AB', etc.)
+        }
+        return null; // Return null for null, undefined, or other types
+    };
+
+    return {
+        ...data,
+        'IAT-1(50)': toNumberOrNull(data['IAT-1(50)']),
+        'IAT-2(50)': toNumberOrNull(data['IAT-2(50)']),
+        'Assignment-1(20)': toNumberOrNull(data['Assignment-1(20)']),
+        'Assignment-2(20)': toNumberOrNull(data['Assignment-2(20)']),
+    };
 });
+
 
 // Input schema for the server action
 const UploadMarksInputSchema = z.object({
@@ -40,30 +59,24 @@ export type UploadMarksOutput = z.infer<typeof UploadMarksOutputSchema>;
 
 
 // MOCK: Function to save marks (replace with actual database/storage logic)
+// This function runs on the server and cannot use localStorage.
 async function saveMarksToStorage(marks: SubjectMark[], semester: number, section: string, subjectCode: string): Promise<void> {
-  console.log(`Saving marks for Sem: ${semester}, Sec: ${section}, Sub: ${subjectCode}`);
+  console.log(`MOCK: Saving marks for Sem: ${semester}, Sec: ${section}, Sub: ${subjectCode} (Server Action)`);
   await new Promise(resolve => setTimeout(resolve, 500)); // Simulate async save
-  const storageKey = `marks-${semester}-${section}-${subjectCode}`;
-  localStorage.setItem(storageKey, JSON.stringify(marks));
-  console.log(`Marks saved to localStorage key: ${storageKey}`);
-
-   // Additionally, update individual student marks for the student page (if needed by existing logic)
-   marks.forEach(mark => {
-       const studentMarkKey = `marks-${mark.studentId}-${mark.subjectCode}`;
-       // Fetch existing marks for the student/subject if any, merge/update, and save back
-       // For simplicity in mock, just overwrite - a real app might need merging logic
-       localStorage.setItem(studentMarkKey, JSON.stringify(mark));
-   });
-
+  // In a real app, save to Firestore or other database here.
+  // Do NOT use localStorage in server actions.
+  console.log(`MOCK: ${marks.length} marks processed for saving.`);
 }
 
 // MOCK: Function to fetch marks (replace with actual database/storage logic)
+// This function runs on the server and cannot use localStorage.
 export async function fetchMarksFromStorage(semester: number, section: string, subjectCode: string): Promise<SubjectMark[]> {
-    console.log(`Fetching marks for Sem: ${semester}, Sec: ${section}, Sub: ${subjectCode}`);
+    console.log(`MOCK: Fetching marks for Sem: ${semester}, Sec: ${section}, Sub: ${subjectCode} (Server Action)`);
     await new Promise(resolve => setTimeout(resolve, 200)); // Simulate async fetch
-    const storageKey = `marks-${semester}-${section}-${subjectCode}`;
-    const storedData = localStorage.getItem(storageKey);
-    return storedData ? JSON.parse(storedData) : [];
+    // In a real app, fetch from Firestore or other database here.
+    // Do NOT use localStorage in server actions.
+    // Return empty array for mock purposes as there's no persistent server storage yet.
+    return [];
 }
 
 
@@ -84,38 +97,45 @@ export async function uploadMarks(input: UploadMarksInput): Promise<UploadMarksO
 
     // Convert sheet to JSON, handling potential header variations
     // We expect headers like USN, NAME, IAT-1(50), etc.
-    // `raw: false` attempts to parse dates/numbers, `defval: null` sets empty cells to null
-    const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: null });
+    // `raw: true` keeps values as they are, we'll parse them with Zod
+    const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { raw: true, defval: null });
 
     const processedMarks: SubjectMark[] = [];
     const errorDetails: string[] = [];
 
     jsonData.forEach((row, index) => {
+        // Basic check if row seems empty or irrelevant
+        if (!row || !row.USN) {
+          // console.log(`Skipping empty or invalid row ${index + 2}`);
+          return;
+        }
+
       // Trim keys and convert to uppercase for case-insensitive matching
       const normalizedRow: any = {};
       for (const key in row) {
         normalizedRow[key.trim().toUpperCase()] = row[key];
       }
 
-      // Map Excel columns to SubjectMark fields
+      // Map Excel columns to SubjectMark fields - handle potential key variations
       const mappedRow = {
         USN: normalizedRow['USN'],
         NAME: normalizedRow['NAME'],
         'IAT-1(50)': normalizedRow['IAT-1(50)'],
         'IAT-2(50)': normalizedRow['IAT-2(50)'],
-        'Assignment-1(20)': normalizedRow['ASSIGNMENT-1(20)'],
-        'Assignment-2(20)': normalizedRow['ASSIGNMENT-2(20)'],
+        'Assignment-1(20)': normalizedRow['ASSIGNMENT-1(20)'] || normalizedRow['ASSIGNMENT 1 (20)'], // Handle variations
+        'Assignment-2(20)': normalizedRow['ASSIGNMENT-2(20)'] || normalizedRow['ASSIGNMENT 2 (20)'], // Handle variations
       };
 
       const rowValidation = MarkRowSchema.safeParse(mappedRow);
 
       if (!rowValidation.success) {
-        errorDetails.push(`Row ${index + 2}: Validation Error - ${JSON.stringify(rowValidation.error.flatten().fieldErrors)}`);
+        // Include row data in error for better debugging
+        errorDetails.push(`Row ${index + 2}: Validation Error - ${JSON.stringify(rowValidation.error.flatten().fieldErrors)} | Raw Data: ${JSON.stringify(row)}`);
         return; // Skip this row
       }
 
       const rowData = rowValidation.data;
-      const usn = rowData.USN.toUpperCase(); // Ensure USN is uppercase for matching
+      const usn = String(rowData.USN).toUpperCase(); // Ensure USN is uppercase string for matching
       const studentId = USN_TO_USERID_MAP[usn]; // Map USN to internal student ID
 
       if (!studentId) {
@@ -123,20 +143,19 @@ export async function uploadMarks(input: UploadMarksInput): Promise<UploadMarksO
         return; // Skip if student not found
       }
 
-      // Create SubjectMark object
+      // Create SubjectMark object using validated and transformed data
       const markEntry: SubjectMark = {
         id: `${studentId}-${subjectCode}-${semester}`, // Composite ID
         studentId: studentId,
         usn: usn,
-        studentName: rowData.NAME,
+        studentName: String(rowData.NAME), // Ensure name is string
         subjectCode: subjectCode,
         subjectName: subjectName,
         semester: semester,
-        // Set marks, ensuring null for non-numeric or missing values
-        ia1_50: typeof rowData['IAT-1(50)'] === 'number' ? rowData['IAT-1(50)'] : null,
-        ia2_50: typeof rowData['IAT-2(50)'] === 'number' ? rowData['IAT-2(50)'] : null,
-        assignment1_20: typeof rowData['Assignment-1(20)'] === 'number' ? rowData['Assignment-1(20)'] : null,
-        assignment2_20: typeof rowData['Assignment-2(20)'] === 'number' ? rowData['Assignment-2(20)'] : null,
+        ia1_50: rowData['IAT-1(50)'],
+        ia2_50: rowData['IAT-2(50)'],
+        assignment1_20: rowData['Assignment-1(20)'],
+        assignment2_20: rowData['Assignment-2(20)'],
       };
 
       processedMarks.push(markEntry);
@@ -147,7 +166,7 @@ export async function uploadMarks(input: UploadMarksInput): Promise<UploadMarksO
         return { success: false, message: "Failed to process marks from Excel. See error details.", errorDetails };
     }
 
-    // Save the successfully processed marks
+    // Save the successfully processed marks (to mock server storage)
     await saveMarksToStorage(processedMarks, semester, section, subjectCode);
 
     const message = errorDetails.length > 0
@@ -173,10 +192,10 @@ export async function uploadMarks(input: UploadMarksInput): Promise<UploadMarksO
 // Server action to save edited marks
 export async function saveEditedMarks(marks: SubjectMark[], semester: number, section: string, subjectCode: string, facultyId: string): Promise<{ success: boolean; message: string }> {
     try {
-        console.log(`Saving EDITED marks for Sem: ${semester}, Sec: ${section}, Sub: ${subjectCode} by Faculty: ${facultyId}`);
+        console.log(`MOCK: Saving EDITED marks for Sem: ${semester}, Sec: ${section}, Sub: ${subjectCode} by Faculty: ${facultyId} (Server Action)`);
         // Add validation here if needed (e.g., ensure marks are within range)
-        await saveMarksToStorage(marks, semester, section, subjectCode);
-        return { success: true, message: "Edited marks saved successfully." };
+        await saveMarksToStorage(marks, semester, section, subjectCode); // Use the server-side mock save
+        return { success: true, message: "Edited marks saved successfully (mock)." };
     } catch (error: any) {
         console.error("Error saving edited marks:", error);
         return { success: false, message: `Failed to save edited marks: ${error.message}` };

@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
 import type { SubjectMark } from '@/types';
-import { Edit3, UploadCloud, Save, BarChart, FileWarning } from 'lucide-react';
+import { Edit3, UploadCloud, Save, BarChart, FileWarning, Info } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { FileUploadInput } from '@/components/core/FileUploadInput';
@@ -29,10 +29,13 @@ const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
 // Function to calculate basic summary statistics
 const calculateSummary = (marks: SubjectMark[]) => {
     if (!marks || marks.length === 0) {
-        return { count: 0, avgIA1: 0, avgIA2: 0, avgAssign1: 0, avgAssign2: 0 };
+        return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
     }
     const validMarks = marks.filter(m => m.ia1_50 !== null || m.ia2_50 !== null || m.assignment1_20 !== null || m.assignment2_20 !== null);
     const count = validMarks.length;
+    if (count === 0) {
+         return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
+    }
 
     const sumIA1 = validMarks.reduce((sum, m) => sum + (m.ia1_50 || 0), 0);
     const sumIA2 = validMarks.reduce((sum, m) => sum + (m.ia2_50 || 0), 0);
@@ -63,36 +66,44 @@ export default function MarksEntryPage() {
   const [subjectsForSemester, setSubjectsForSemester] = useState<{ code: string, name: string }[]>([]);
   const [marksFile, setMarksFile] = useState<File | null>(null);
   const [marksData, setMarksData] = useState<SubjectMark[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isSavingEdits, setIsSavingEdits] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // For fetching/displaying data
+  const [isUploading, setIsUploading] = useState(false); // For file upload process
+  const [isSavingEdits, setIsSavingEdits] = useState(false); // For saving edits
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false); // Track if initial fetch attempt was made
 
-  // Fetch existing marks when selection changes
+  // Fetch existing marks using the server action when selection changes
   useEffect(() => {
     const loadMarks = async () => {
       if (selectedSemester && selectedSection && selectedSubject && user) {
         setIsLoading(true);
+        setInitialLoadComplete(false);
         setUploadErrors([]); // Clear previous errors
-        // MOCK: Fetch from local storage; replace with API call
+        setMarksData([]); // Clear existing data before fetching
         try {
-          // Simulating fetch call for existing marks
+          // Fetch marks using the server action
           const existingMarks = await fetchMarksFromStorage(
               parseInt(selectedSemester),
               selectedSection,
               selectedSubject.code
           );
           setMarksData(existingMarks);
+           if (existingMarks.length === 0) {
+               console.log("No existing marks found for this selection via server action.");
+               // Optionally show a toast if needed, but the table will just be empty
+           }
         } catch (error) {
-            console.error("Error fetching marks from storage:", error);
+            console.error("Error fetching marks via server action:", error);
             toast({ title: "Error", description: "Could not fetch existing marks.", variant: "destructive" });
             setMarksData([]); // Clear data on error
         } finally {
              setIsLoading(false);
+             setInitialLoadComplete(true);
         }
-
       } else {
         setMarksData([]); // Clear marks if selection is incomplete
+        setIsLoading(false);
+        setInitialLoadComplete(false); // Reset initial load state
       }
     };
     loadMarks();
@@ -113,11 +124,13 @@ export default function MarksEntryPage() {
     }
     setIsUploading(true);
     setUploadErrors([]);
+    setMarksData([]); // Clear current display while uploading new file
 
     try {
       const fileBuffer = await marksFile.arrayBuffer();
       const fileData = new Uint8Array(fileBuffer);
 
+      // Call the server action for uploading
       const result = await uploadMarks({
         fileData,
         semester: parseInt(selectedSemester),
@@ -128,7 +141,7 @@ export default function MarksEntryPage() {
       });
 
       if (result.success) {
-        setMarksData(result.processedMarks || []);
+        setMarksData(result.processedMarks || []); // Update display with processed marks
         toast({ title: "Upload Successful", description: result.message, className: "bg-success text-success-foreground" });
         if (result.errorDetails && result.errorDetails.length > 0) {
             setUploadErrors(result.errorDetails);
@@ -136,6 +149,9 @@ export default function MarksEntryPage() {
       } else {
         toast({ title: "Upload Failed", description: result.message, variant: "destructive" });
         setUploadErrors(result.errorDetails || [result.message]);
+        // Optionally fetch existing marks again if upload fails completely
+        // const existingMarks = await fetchMarksFromStorage(parseInt(selectedSemester), selectedSection, selectedSubject.code);
+        // setMarksData(existingMarks);
       }
     } catch (error: any) {
       console.error("File upload error:", error);
@@ -144,6 +160,7 @@ export default function MarksEntryPage() {
     } finally {
       setIsUploading(false);
       setMarksFile(null); // Clear the file input state
+      // Focus management might be needed here if the file input is visually cleared
     }
   };
 
@@ -151,9 +168,10 @@ export default function MarksEntryPage() {
     const numericValue = value === '' ? null : parseInt(value, 10);
     const maxValues = { ia1_50: 50, ia2_50: 50, assignment1_20: 20, assignment2_20: 20 };
 
-    // Validate marks
-    if (numericValue !== null && (numericValue < 0 || (field in maxValues && numericValue > (maxValues as any)[field]))) {
-        toast({ title: "Invalid Mark", description: `Mark for ${field} must be between 0 and ${field in maxValues ? (maxValues as any)[field] : 'allowed range'}.`, variant: "destructive" });
+    // Basic client-side validation
+    if (numericValue !== null && (isNaN(numericValue) || numericValue < 0 || (field in maxValues && numericValue > (maxValues as any)[field]))) {
+        toast({ title: "Invalid Mark", description: `Mark must be a number between 0 and ${field in maxValues ? (maxValues as any)[field] : 'allowed range'}.`, variant: "destructive" });
+        // Optionally revert the change or handle visually
         return;
     }
 
@@ -172,6 +190,7 @@ export default function MarksEntryPage() {
     }
     setIsSavingEdits(true);
     try {
+        // Call the server action to save edits
         const result = await saveEditedMarks(
             marksData,
             parseInt(selectedSemester),
@@ -183,6 +202,9 @@ export default function MarksEntryPage() {
             toast({ title: "Changes Saved", description: result.message, className: "bg-success text-success-foreground" });
         } else {
             toast({ title: "Save Failed", description: result.message, variant: "destructive" });
+            // Optionally refetch data to revert changes on failure
+            // const existingMarks = await fetchMarksFromStorage(parseInt(selectedSemester), selectedSection, selectedSubject.code);
+            // setMarksData(existingMarks);
         }
     } catch (error: any) {
         console.error("Error saving edited marks:", error);
@@ -194,6 +216,8 @@ export default function MarksEntryPage() {
 
 
   const summary = useMemo(() => calculateSummary(marksData), [marksData]);
+  const selectionMade = !!(selectedSemester && selectedSection && selectedSubject);
+
 
   if (!user || user.role !== 'Faculty') {
     return <p>Access denied. This page is for faculty members only.</p>;
@@ -207,7 +231,7 @@ export default function MarksEntryPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Select Class and Subject</CardTitle>
-          <CardDescription>Choose the semester, section, and subject to enter marks for.</CardDescription>
+          <CardDescription>Choose the semester, section, and subject to enter or view marks.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
@@ -249,21 +273,21 @@ export default function MarksEntryPage() {
       </Card>
 
       {/* Step 2: Upload */}
-       {selectedSemester && selectedSection && selectedSubject && (
+       {selectionMade && (
             <Card className="shadow-lg">
                 <CardHeader>
                 <CardTitle>Upload Marks File</CardTitle>
-                <CardDescription>Upload the Excel sheet containing marks for {selectedSubject.name} ({selectedSubject.code}), Semester {selectedSemester}, Section {selectedSection}.</CardDescription>
+                <CardDescription>Upload the Excel sheet containing marks for {selectedSubject?.name} ({selectedSubject?.code}), Semester {selectedSemester}, Section {selectedSection}. This will replace any existing marks for this selection.</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col md:flex-row items-start md:items-end gap-4">
                  <FileUploadInput
                     id="marksFile"
                     label="Select Excel File (.xlsx)"
                     onFileChange={setMarksFile}
-                    accept=".xlsx"
+                    accept=".xlsx, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     currentFile={marksFile?.name} // Show selected file name
                 />
-                <Button onClick={handleFileUpload} disabled={!marksFile || isUploading}>
+                <Button onClick={handleFileUpload} disabled={!marksFile || isUploading || isLoading}>
                     <UploadCloud className="mr-2 h-4 w-4" /> {isUploading ? 'Uploading...' : 'Upload & Process'}
                 </Button>
                 </CardContent>
@@ -283,29 +307,30 @@ export default function MarksEntryPage() {
             </Alert>
         )}
 
-      {/* Step 3: Display & Edit Marks */}
-       {(marksData.length > 0 || isLoading) && selectedSubject && (
+      {/* Step 3: Display & Edit Marks Table */}
+       {selectionMade && (
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>Marks for {selectedSubject.name} - Section {selectedSection}</CardTitle>
-            <CardDescription>View and edit the uploaded marks. Click 'Save Changes' after editing.</CardDescription>
+            <CardTitle>Marks for {selectedSubject?.name} - Section {selectedSection}</CardTitle>
+            <CardDescription>View and edit the marks below. Click 'Save Changes' after editing.</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
                  <div className="space-y-2">
+                    <p className="text-center text-muted-foreground py-4">Loading marks data...</p>
                     {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
                  </div>
-            ) : (
+            ) : !isUploading && marksData.length > 0 ? (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[120px]">USN</TableHead>
                       <TableHead>Student Name</TableHead>
-                      <TableHead className="text-center">IA 1 (50)</TableHead>
-                      <TableHead className="text-center">IA 2 (50)</TableHead>
-                      <TableHead className="text-center">Assign 1 (20)</TableHead>
-                      <TableHead className="text-center">Assign 2 (20)</TableHead>
+                      <TableHead className="text-center w-24">IA 1 (50)</TableHead>
+                      <TableHead className="text-center w-24">IA 2 (50)</TableHead>
+                      <TableHead className="text-center w-28">Assign 1 (20)</TableHead>
+                      <TableHead className="text-center w-28">Assign 2 (20)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -314,15 +339,15 @@ export default function MarksEntryPage() {
                         <TableCell className="font-mono text-xs">{markEntry.usn}</TableCell>
                         <TableCell className="font-medium">{markEntry.studentName}</TableCell>
                         {(['ia1_50', 'ia2_50', 'assignment1_20', 'assignment2_20'] as const).map(field => (
-                          <TableCell key={field}>
+                          <TableCell key={field} className="px-2 py-1">
                             <Input
                               type="number"
-                              className="w-20 text-center mx-auto bg-background"
+                              className="w-20 text-center mx-auto bg-background h-8 text-sm"
                               value={markEntry[field] === null || markEntry[field] === undefined ? '' : String(markEntry[field])}
                               onChange={(e) => handleMarkChange(markEntry.studentId, field, e.target.value)}
                               min="0"
                               max={field.includes('50') ? "50" : "20"} // Dynamic max based on field name
-                              disabled={isSavingEdits}
+                              disabled={isSavingEdits || isUploading}
                             />
                           </TableCell>
                         ))}
@@ -331,22 +356,31 @@ export default function MarksEntryPage() {
                   </TableBody>
                 </Table>
                 <div className="mt-6 flex justify-end">
-                  <Button onClick={handleSaveChanges} disabled={isSavingEdits || isLoading}>
+                  <Button onClick={handleSaveChanges} disabled={isSavingEdits || isLoading || isUploading}>
                     <Save className="mr-2 h-4 w-4" /> {isSavingEdits ? 'Saving...' : 'Save Changes'}
                   </Button>
                 </div>
               </div>
+            ) : (
+                 !isUploading && initialLoadComplete && (
+                    <p className="text-center py-8 text-muted-foreground">
+                        No marks found for this selection. Upload an Excel file to add marks.
+                    </p>
+                 )
             )}
+             {isUploading && (
+                 <p className="text-center py-8 text-muted-foreground">Processing uploaded file...</p>
+             )}
           </CardContent>
         </Card>
       )}
 
       {/* Step 4: Performance Summary */}
-      {marksData.length > 0 && !isLoading && selectedSubject && (
+      {selectionMade && !isLoading && !isUploading && marksData.length > 0 && (
             <Card className="shadow-lg">
                 <CardHeader>
                     <CardTitle className="flex items-center"><BarChart className="mr-2 h-5 w-5 text-primary" /> Performance Summary</CardTitle>
-                    <CardDescription>Overall statistics for {selectedSubject.name} - Section {selectedSection}.</CardDescription>
+                    <CardDescription>Overall statistics for {selectedSubject?.name} - Section {selectedSection}.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
@@ -376,6 +410,14 @@ export default function MarksEntryPage() {
             </Card>
        )}
 
+      {/* Initial state message */}
+       {!selectionMade && (
+         <Alert className="mt-6 bg-accent/20 border-accent text-accent-foreground">
+             <Info className="h-5 w-5 text-accent" />
+            <AlertTitle>Select Class to Begin</AlertTitle>
+            <AlertDescription>Please select a semester, section, and subject above to view or enter marks.</AlertDescription>
+        </Alert>
+       )}
 
     </div>
   );

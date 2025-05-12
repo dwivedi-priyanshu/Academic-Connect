@@ -7,10 +7,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import type { SubjectMark } from '@/types';
-import { BarChart, Info, Users, Percent, TrendingUp, TrendingDown } from 'lucide-react';
+import { BarChart, Info, Users, Percent, TrendingUp, TrendingDown, CheckSquare } from 'lucide-react'; // Added CheckSquare
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { fetchMarksFromStorage } from '@/actions/marks-upload'; // Import fetch action
+import { fetchMarksFromStorage } from '@/actions/marks-upload'; // Import fetch server action
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -29,8 +29,17 @@ const calculateDetailedSummary = (marks: SubjectMark[]) => {
     if (!marks || marks.length === 0) {
         return { count: 0, averages: {}, passPercentages: {}, highPerformers: 0, lowPerformers: 0 };
     }
-    const validMarks = marks.filter(m => m.ia1_50 !== null || m.ia2_50 !== null || m.assignment1_20 !== null || m.assignment2_20 !== null);
+    // Filter out entries where ALL assessment fields are null
+    const validMarks = marks.filter(m =>
+        m.ia1_50 !== null ||
+        m.ia2_50 !== null ||
+        m.assignment1_20 !== null ||
+        m.assignment2_20 !== null
+    );
     const count = validMarks.length;
+    if (count === 0) {
+         return { count: 0, averages: {}, passPercentages: {}, highPerformers: 0, lowPerformers: 0 };
+    }
 
     const fields: (keyof SubjectMark)[] = ['ia1_50', 'ia2_50', 'assignment1_20', 'assignment2_20'];
     const maxMarks: Record<string, number> = { 'ia1_50': 50, 'ia2_50': 50, 'assignment1_20': 20, 'assignment2_20': 20 };
@@ -40,7 +49,8 @@ const calculateDetailedSummary = (marks: SubjectMark[]) => {
     const passPercentages: Record<string, string> = {};
 
     fields.forEach(field => {
-        const marksList = validMarks.map(m => m[field]).filter(mark => mark !== null) as number[];
+        // Explicitly filter for non-null numbers for calculations
+        const marksList = validMarks.map(m => m[field]).filter(mark => typeof mark === 'number') as number[];
         if (marksList.length > 0) {
             const sum = marksList.reduce((acc, curr) => acc + curr, 0);
             averages[field] = (sum / marksList.length).toFixed(2);
@@ -50,19 +60,31 @@ const calculateDetailedSummary = (marks: SubjectMark[]) => {
             const passedCount = marksList.filter(mark => mark >= passMark).length;
             passPercentages[field] = ((passedCount / marksList.length) * 100).toFixed(1) + '%';
         } else {
-            averages[field] = 'N/A';
+            averages[field] = 'N/A'; // No valid marks for this assessment
             passPercentages[field] = 'N/A';
         }
     });
 
     // Example: Define high/low performers based on average IA marks (simplified)
-    const iaAvgList = validMarks.map(m => ((m.ia1_50 || 0) + (m.ia2_50 || 0)) / 2).filter(avg => !isNaN(avg));
-    const overallAvgIA = iaAvgList.length > 0 ? (iaAvgList.reduce((a,b) => a + b, 0) / iaAvgList.length) : 0;
-    const highPerformers = iaAvgList.filter(avg => avg >= overallAvgIA * 1.2).length; // Arbitrary: 20% above avg
-    const lowPerformers = iaAvgList.filter(avg => avg < overallAvgIA * 0.8).length; // Arbitrary: 20% below avg
+    // Ensure only numbers are included in the average calculation
+    const iaAvgList = validMarks.map(m => {
+        const ia1 = typeof m.ia1_50 === 'number' ? m.ia1_50 : 0;
+        const ia2 = typeof m.ia2_50 === 'number' ? m.ia2_50 : 0;
+        const count = (typeof m.ia1_50 === 'number' ? 1 : 0) + (typeof m.ia2_50 === 'number' ? 1 : 0);
+        return count > 0 ? (ia1 + ia2) / count : null; // Calculate average only if at least one IA mark exists
+    }).filter(avg => avg !== null) as number[];
+
+    let highPerformers = 0;
+    let lowPerformers = 0;
+    if (iaAvgList.length > 0) {
+        const overallAvgIA = iaAvgList.reduce((a,b) => a + b, 0) / iaAvgList.length;
+        highPerformers = iaAvgList.filter(avg => avg >= overallAvgIA * 1.2).length; // Arbitrary: 20% above avg
+        lowPerformers = iaAvgList.filter(avg => avg < overallAvgIA * 0.8).length; // Arbitrary: 20% below avg
+    }
+
 
     return {
-        count,
+        count, // Total students with at least one mark entry
         averages,
         passPercentages,
         highPerformers,
@@ -79,6 +101,7 @@ export default function PerformanceAnalysisPage() {
   const [subjectsForSemester, setSubjectsForSemester] = useState<{ code: string, name: string }[]>([]);
   const [performanceData, setPerformanceData] = useState<ReturnType<typeof calculateDetailedSummary> | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false); // Track fetch attempt
 
   // Update subjects when semester changes
   useEffect(() => {
@@ -98,30 +121,39 @@ export default function PerformanceAnalysisPage() {
    }, [selectedSubject]);
 
 
-  // Fetch marks and calculate summary when selection changes
+  // Fetch marks and calculate summary using the server action when selection changes
   useEffect(() => {
     const loadPerformanceData = async () => {
       if (selectedSemester && selectedSection && selectedSubject && user) {
         setIsLoading(true);
+        setInitialLoadComplete(false);
         setPerformanceData(null); // Clear previous data
         try {
+          // Fetch marks using the server action
           const marks = await fetchMarksFromStorage(
               parseInt(selectedSemester),
               selectedSection,
               selectedSubject.code
           );
+           setInitialLoadComplete(true); // Mark fetch attempt as complete
           if (marks.length > 0) {
             const summary = calculateDetailedSummary(marks);
             setPerformanceData(summary);
           } else {
              toast({ title: "No Data", description: "No marks data found for this selection.", variant: "default" });
+             // Keep performanceData as null
           }
         } catch (error) {
             console.error("Error fetching marks for analysis:", error);
             toast({ title: "Error", description: "Could not fetch marks data.", variant: "destructive" });
+            setInitialLoadComplete(true); // Mark fetch attempt as complete even on error
         } finally {
              setIsLoading(false);
         }
+      } else {
+           setIsLoading(false);
+           setInitialLoadComplete(false); // Reset if selection becomes incomplete
+           setPerformanceData(null);
       }
     };
     loadPerformanceData();
@@ -195,7 +227,7 @@ export default function PerformanceAnalysisPage() {
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
                  </div>
-            ) : performanceData ? (
+            ) : performanceData && performanceData.count > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Student Count */}
                  <Card className="bg-muted/30">
@@ -268,7 +300,9 @@ export default function PerformanceAnalysisPage() {
 
               </div>
             ) : (
-              <p className="text-center py-8 text-muted-foreground">No performance data available for this selection. Ensure marks have been uploaded.</p>
+               initialLoadComplete && ( // Show message only after fetch attempt is complete
+                  <p className="text-center py-8 text-muted-foreground">No performance data available for this selection. Ensure marks have been uploaded via the Marks Entry page.</p>
+               )
             )}
           </CardContent>
         </Card>
