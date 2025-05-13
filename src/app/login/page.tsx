@@ -8,16 +8,17 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useAuth } from '@/contexts/AuthContext';
 import type { UserRole } from '@/types';
-import { GraduationCap, LogIn } from 'lucide-react';
+import { GraduationCap, LogIn, UserPlus, LockKeyhole } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState(''); // Password currently not used by backend login action
+  const [password, setPassword] = useState(''); 
   const [selectedRole, setSelectedRole] = useState<UserRole>('Student');
-  const { login, isAuthenticated, isLoading: authIsLoading } = useAuth(); // Renamed isLoading to authIsLoading
+  const { login, isAuthenticated, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,16 +33,18 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !selectedRole) { // Password validation removed as it's not used by current backend
-      toast({ title: "Error", description: "Please fill in email and select a role.", variant: "destructive" });
+    if (!email || !password || !selectedRole) { 
+      toast({ title: "Error", description: "Please fill in all fields and select a role.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
-    const success = await login(email, selectedRole);
+    const loginResult = await login(email, password, selectedRole); // Pass password to login function
     setIsSubmitting(false);
 
-    if (!success) {
-      toast({ title: "Login Failed", description: "Invalid credentials or user not found for the selected role. Please try again.", variant: "destructive" });
+    if (typeof loginResult === 'object' && loginResult?.error) {
+      toast({ title: "Login Failed", description: loginResult.error, variant: "destructive" });
+    } else if (!loginResult) {
+       toast({ title: "Login Failed", description: "Invalid credentials or user not found for the selected role. Please try again.", variant: "destructive" });
     }
     // Successful login is handled by AuthContext redirect
   };
@@ -86,7 +89,7 @@ export default function LoginPage() {
                 id="password"
                 type="password"
                 value={password}
-                placeholder="••••••••" // Password field kept for UI, but not sent/checked
+                placeholder="••••••••" 
                 onChange={(e) => setPassword(e.target.value)}
                 required 
                 className="bg-background"
@@ -120,13 +123,22 @@ export default function LoginPage() {
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="text-center text-sm text-muted-foreground">
-          <p>
-            Login with your registered email and role.
-          </p>
+        <CardFooter className="flex flex-col items-center space-y-2 text-sm">
+          <Link href="/forgot-password" passHref>
+            <Button variant="link" className="text-muted-foreground hover:text-primary p-0 h-auto">
+              <LockKeyhole className="mr-1 h-3 w-3" /> Forgot Password?
+            </Button>
+          </Link>
+           <div className="text-muted-foreground">
+            Don't have an account?{' '}
+            <Link href="/register" passHref>
+                 <Button variant="link" className="text-primary hover:underline p-0 h-auto inline">
+                    Register here <UserPlus className="ml-1 h-3 w-3 inline"/>
+                </Button>
+            </Link>
+          </div>
         </CardFooter>
       </Card>
     </div>
   );
 }
-

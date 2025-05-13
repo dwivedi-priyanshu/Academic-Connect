@@ -4,12 +4,12 @@
 import type { User, UserRole } from '@/types';
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { loginUserAction, fetchUserForSessionAction } from '@/actions/auth-actions'; // Import new actions
+import { loginUserAction, fetchUserForSessionAction } from '@/actions/auth-actions'; 
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string, role: UserRole) => Promise<boolean>; // Changed signature
+  login: (email: string, passwordPlainText: string, role: UserRole) => Promise<boolean | { error: string }>; // Updated signature
   logout: () => void;
   isLoading: boolean;
 }
@@ -26,17 +26,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const restoreSession = async () => {
       setIsLoading(true);
       const storedUserId = localStorage.getItem('academic-connect-userId');
-      // const storedUserRole = localStorage.getItem('academic-connect-role') as UserRole | null; // Role not strictly needed if fetching by ID
-
+      
       if (storedUserId) {
         try {
           const sessionUser = await fetchUserForSessionAction(storedUserId);
           if (sessionUser) {
             setUser(sessionUser);
           } else {
-            // Invalid session data, clear localStorage
             localStorage.removeItem('academic-connect-userId');
-            localStorage.removeItem('academic-connect-role');
+            localStorage.removeItem('academic-connect-role'); // Role also cleared
           }
         } catch (error) {
           console.error("Session restoration failed:", error);
@@ -50,36 +48,42 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
-    if (!isLoading && !user && pathname !== '/login' && !pathname.startsWith('/_next/')) {
+    if (!isLoading && !user && pathname !== '/login' && pathname !== '/register' && pathname !== '/forgot-password' && !pathname.startsWith('/_next/')) {
        if (pathname !== '/') router.push('/login');
     }
-    if (!isLoading && user && pathname === '/login') {
+    if (!isLoading && user && (pathname === '/login' || pathname === '/register' || pathname === '/forgot-password')) {
       router.push('/dashboard');
     }
   }, [user, isLoading, pathname, router]);
 
 
-  const handleLogin = async (email: string, role: UserRole): Promise<boolean> => {
+  const handleLogin = async (email: string, passwordPlainText: string, role: UserRole): Promise<boolean | { error: string }> => {
     setIsLoading(true);
     try {
-      const loggedInUser = await loginUserAction(email, role);
-      if (loggedInUser) {
+      const loginResult = await loginUserAction(email, passwordPlainText, role);
+      
+      if (loginResult && 'id' in loginResult) { // Successful login, user object returned
+        const loggedInUser = loginResult as User;
         setUser(loggedInUser);
         localStorage.setItem('academic-connect-userId', loggedInUser.id);
-        localStorage.setItem('academic-connect-role', loggedInUser.role); // Still useful for quick role checks if needed
+        localStorage.setItem('academic-connect-role', loggedInUser.role); 
         router.push('/dashboard');
         setIsLoading(false);
         return true;
-      } else {
-        setUser(null); // Ensure user is null on failed login
+      } else if (loginResult && 'error' in loginResult) { // Error object returned
+        setUser(null); 
         setIsLoading(false);
-        return false;
+        return { error: loginResult.error };
+      } else { // Null returned (user not found, or other silent failure)
+         setUser(null); 
+        setIsLoading(false);
+        return false; // Generic failure
       }
-    } catch (error) {
+    } catch (error) { // Catch unexpected errors during the action call itself
       console.error("Login error in AuthContext:", error);
       setUser(null);
       setIsLoading(false);
-      return false;
+      return { error: 'An unexpected server error occurred during login.' };
     }
   };
 
@@ -104,4 +108,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

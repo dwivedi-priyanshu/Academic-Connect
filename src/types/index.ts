@@ -1,5 +1,6 @@
 
 export type UserRole = 'Student' | 'Faculty' | 'Admin';
+export type UserStatus = 'PendingApproval' | 'Active' | 'Rejected' | 'Disabled';
 
 export interface User {
   _id?: any; // MongoDB ObjectId string when fetched from DB
@@ -8,6 +9,7 @@ export interface User {
   name: string;
   role: UserRole;
   avatar?: string; 
+  status: UserStatus; // Added status field
   // password?: string; // In a real app, this would be a hashed password, not stored on client model
 }
 
@@ -78,21 +80,21 @@ export interface MoocCourse {
 
 // The following MOCK_USER constants are for reference or seeding the database.
 // They are NOT used for active authentication by AuthContext anymore.
-export const MOCK_USER_STUDENT_DATA: Omit<User, 'id' | '_id'> = {
+export const MOCK_USER_STUDENT_DATA: Omit<User, 'id' | '_id' | 'status'> = {
   email: 'student@example.com',
   name: 'John Doe',
   role: 'Student',
   avatar: 'https://picsum.photos/seed/student123/100/100',
 };
 
-export const MOCK_USER_FACULTY_DATA: Omit<User, 'id' | '_id'> = {
+export const MOCK_USER_FACULTY_DATA: Omit<User, 'id' | '_id' | 'status'> = {
   email: 'faculty@example.com',
   name: 'Dr. Jane Smith',
   role: 'Faculty',
   avatar: 'https://picsum.photos/seed/faculty456/100/100',
 };
 
-export const MOCK_USER_ADMIN_DATA: Omit<User, 'id' | '_id'> = {
+export const MOCK_USER_ADMIN_DATA: Omit<User, 'id' | '_id' | 'status'> = {
   email: 'admin@example.com',
   name: 'Admin User',
   role: 'Admin',
@@ -101,9 +103,9 @@ export const MOCK_USER_ADMIN_DATA: Omit<User, 'id' | '_id'> = {
 
 // It's assumed the 'users' collection in MongoDB would contain user documents.
 // Example structure for a user document in MongoDB (using 'id' as a unique string, could also be email):
-// { id: "student123", email: "student@example.com", name: "John Doe", role: "Student", avatar: "...", hashedPassword: "..." }
-// { id: "faculty456", email: "faculty@example.com", name: "Dr. Jane Smith", role: "Faculty", avatar: "...", hashedPassword: "..." }
-// { id: "admin789", email: "admin@example.com", name: "Admin User", role: "Admin", avatar: "...", hashedPassword: "..." }
+// { id: "student123", email: "student@example.com", name: "John Doe", role: "Student", avatar: "...", status: "Active", hashedPassword: "..." }
+// { id: "faculty456", email: "faculty@example.com", name: "Dr. Jane Smith", role: "Faculty", avatar: "...", status: "Active", hashedPassword: "..." }
+// { id: "admin789", email: "admin@example.com", name: "Admin User", role: "Admin", avatar: "...", status: "Active", hashedPassword: "..." }
 
 // Student profiles in `student_profiles` collection would link via `userId`.
 // Example: { userId: "student123", admissionId: "1USN001", fullName: "John Doe", ... }
