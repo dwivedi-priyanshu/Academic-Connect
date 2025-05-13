@@ -1,4 +1,3 @@
-
 'use server';
 
 import { connectToDatabase } from '@/lib/mongodb';
@@ -20,10 +19,12 @@ export async function fetchStudentMarksAction(studentId: string, semester: numbe
     const studentMarksCursor = marksCollection.find(query);
     const studentMarksArray = await studentMarksCursor.toArray();
     
-    // Assuming SubjectMark 'id' is the composite key, which is used as _id in DB
+    // In MARKS_COLLECTION, _id is already a string (composite key: studentId-subjectCode-semester)
+    // and it is also stored as 'id'.
     return studentMarksArray.map(doc => {
-      const { _id, ...rest } = doc as any; // Cast to any to handle _id
-      return { ...rest, id: _id } as SubjectMark; 
+      const { _id, ...rest } = doc as any; 
+      // Ensure both id and _id are the string from the database _id field
+      return { ...rest, id: _id, _id: _id } as SubjectMark; 
     });
   } catch (error) {
     console.error(`Error fetching marks for student ${studentId}, semester ${semester}:`, error);

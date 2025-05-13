@@ -1,4 +1,3 @@
-
 'use server';
 
 import { connectToDatabase } from '@/lib/mongodb';
@@ -31,8 +30,10 @@ export async function loginUserAction(email: string, passwordPlainText: string, 
     // Hardcoded admin login bypass
     if (email.toLowerCase() === 'admin@gmail.com' && passwordPlainText === 'password' && role === 'Admin') {
       console.log('Hardcoded admin login successful.');
+      const adminId = 'hardcoded-admin-id';
       return {
-        id: 'hardcoded-admin-id', // Use a consistent but clearly mock ID
+        id: adminId,
+        _id: adminId, // Ensure _id is also string
         email: 'admin@gmail.com',
         name: 'Admin User (Hardcoded)',
         role: 'Admin',
@@ -60,23 +61,20 @@ export async function loginUserAction(email: string, passwordPlainText: string, 
         return { error: 'Your account is not active. Please contact support.' };
       }
 
-      console.log('User found and active:', userDocument.id, userDocument.role);
-      // Ensure the returned user object maps _id to id if it's from DB
-      const id = userDocument.id || userDocument._id?.toHexString();
-      return { 
-        id: id,
-        email: userDocument.email,
-        name: userDocument.name,
-        role: userDocument.role,
-        avatar: userDocument.avatar,
-        status: userDocument.status,
+      console.log('User found and active:', userDocument._id, userDocument.role);
+      const idStr = userDocument._id.toHexString();
+      const { _id, password, ...restOfUser } = userDocument; // Exclude original _id and password
+
+      return {
+        ...restOfUser,
+        id: idStr,
+        _id: idStr, // Ensure _id passed to client is string
       } as User;
     }
     console.log('User not found or role mismatch for:', email, role);
     return null;
   } catch (error) {
     console.error('Error during login user action:', error);
-    // throw new Error('Login failed due to a server error.'); // Avoid throwing generic error
     return { error: 'Login failed due to a server error.' };
   }
 }
@@ -90,6 +88,7 @@ export async function fetchUserForSessionAction(userId: string): Promise<User | 
     if (userId === 'hardcoded-admin-id') {
       return {
         id: 'hardcoded-admin-id',
+        _id: 'hardcoded-admin-id',
         email: 'admin@gmail.com',
         name: 'Admin User (Hardcoded)',
         role: 'Admin',
@@ -99,26 +98,28 @@ export async function fetchUserForSessionAction(userId: string): Promise<User | 
     }
 
     const usersCollection = await getUsersCollection();
-    // Attempt to find by `id` first (our string representation), then by `_id` if `id` is not directly stored.
-    let userDocument = await usersCollection.findOne({ id: userId });
-    if (!userDocument && ObjectId.isValid(userId)) {
+    let userDocument: User | null = null;
+    if (ObjectId.isValid(userId)) {
         userDocument = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    } else {
+        // This case might be problematic if id field is not indexed or consistently used.
+        // For session restoration, relying on _id (ObjectId string) is safer.
+        console.warn(`User ID ${userId} is not a valid ObjectId. Attempting to find by string id field.`);
+        userDocument = await usersCollection.findOne({ id: userId } as any);
     }
 
 
     if (userDocument) {
       if (userDocument.status !== 'Active') {
         console.log(`Session user ${userId} is not active (status: ${userDocument.status}). Invalidating session.`);
-        return null; // Effectively logs out user if their status changed
+        return null; 
       }
-       const id = userDocument.id || userDocument._id?.toHexString();
+       const idStr = userDocument._id.toHexString();
+       const { _id, password, ...restOfUser } = userDocument; // Exclude original _id and password
       return { 
-        id: id,
-        email: userDocument.email,
-        name: userDocument.name,
-        role: userDocument.role,
-        avatar: userDocument.avatar,
-        status: userDocument.status,
+        ...restOfUser,
+        id: idStr,
+        _id: idStr, // Ensure _id passed to client is string
       } as User;
     }
     return null;
@@ -147,25 +148,25 @@ export async function registerUserAction(
 
   const userObjectId = new ObjectId();
   const userStatus = (userData.role === 'Admin') ? 'Active' : 'PendingApproval';
+  const userIdStr = userObjectId.toHexString();
 
-  // Document to be inserted into the 'users' collection
-  // IMPORTANT: Storing password in plain text. This is a security risk.
-  // In a production app, hash the password before storing it.
   const userDocumentToInsert = {
     _id: userObjectId,
-    id: userObjectId.toHexString(), // Ensure 'id' field is the hex string of _id
+    id: userIdStr, 
     email: userData.email.toLowerCase(),
     name: userData.name,
     role: userData.role,
-    password: userData.passwordPlainText, // Storing plain text password - VERY INSECURE FOR PRODUCTION
-    avatar: `https://picsum.photos/seed/${userObjectId.toHexString()}/100/100`,
+    password: userData.passwordPlainText, 
+    avatar: `https://picsum.photos/seed/${userIdStr}/100/100`,
     status: userStatus,
   };
 
-  await usersCollection.insertOne(userDocumentToInsert as any); // Cast to any to bypass type checking for password temporarily
+  await usersCollection.insertOne(userDocumentToInsert as any); 
   
+  // Construct user without the password field for returning
   const createdUser: User = {
-    id: userDocumentToInsert.id,
+    id: userIdStr,
+    _id: userIdStr, // Ensure _id is string
     email: userDocumentToInsert.email,
     name: userDocumentToInsert.name,
     role: userDocumentToInsert.role,
@@ -177,29 +178,31 @@ export async function registerUserAction(
 
   if (userData.role === 'Student') {
     const studentProfileObjectId = new ObjectId();
+    const studentProfileIdStr = studentProfileObjectId.toHexString();
     const studentProfileDocumentToInsert = {
       _id: studentProfileObjectId,
-      id: studentProfileObjectId.toHexString(), // Ensure 'id' field is the hex string of _id
+      id: studentProfileIdStr, 
       userId: createdUser.id,
-      admissionId: `TEMP-${Date.now().toString().slice(-6)}`, // Temporary admission ID
+      admissionId: `TEMP-${Date.now().toString().slice(-6)}`, 
       fullName: createdUser.name,
-      dateOfBirth: '', // Placeholder
-      contactNumber: '', // Placeholder
-      address: '', // Placeholder
+      dateOfBirth: '', 
+      contactNumber: '', 
+      address: '', 
       department: 'Not Assigned',
       year: 1,
       section: 'N/A',
-      parentName: '', // Placeholder
-      parentContact: '', // Placeholder
+      parentName: '', 
+      parentContact: '', 
     };
     await studentProfilesCollection.insertOne(studentProfileDocumentToInsert as any);
 
-    // Use the 'id' field from the inserted document for the returned profile
+    const { _id, ...restOfStudentProfile } = studentProfileDocumentToInsert;
     createdStudentProfile = {
-      ...studentProfileDocumentToInsert,
+      ...restOfStudentProfile,
+      id: studentProfileIdStr, // Already string
+      _id: studentProfileIdStr, // Ensure _id is string
     } as StudentProfile;
   }
 
   return { user: createdUser, studentProfile: createdStudentProfile };
 }
-

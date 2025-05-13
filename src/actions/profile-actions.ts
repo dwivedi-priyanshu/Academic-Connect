@@ -1,4 +1,3 @@
-
 'use server';
 
 import { connectToDatabase } from '@/lib/mongodb';
@@ -20,9 +19,15 @@ async function getStudentProfilesCollection(): Promise<Collection<StudentProfile
 export async function fetchUserProfileDataAction(userId: string): Promise<User | null> {
   try {
     const usersCollection = await getUsersCollection();
-    const userDoc = await usersCollection.findOne({ id: userId }); 
+    // Prefer fetching by ObjectId if userId is a valid ObjectId string
+    const query = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { id: userId };
+    const userDoc = await usersCollection.findOne(query as any); 
+    
     if (!userDoc) return null;
-    return { ...userDoc, id: userDoc.id || userDoc._id?.toHexString() } as User;
+    
+    const idStr = userDoc._id.toHexString();
+    const { _id, password, ...rest } = userDoc; // Exclude original _id and password
+    return { ...rest, id: idStr, _id: idStr } as User; // Ensure _id is string
   } catch (error) {
     console.error('Error fetching user profile data:', error);
     throw new Error('Failed to fetch user profile data.');
@@ -32,9 +37,14 @@ export async function fetchUserProfileDataAction(userId: string): Promise<User |
 export async function fetchStudentFullProfileDataAction(userId: string): Promise<StudentProfile | null> {
   try {
     const studentProfilesCollection = await getStudentProfilesCollection();
+    // Assuming userId in student_profiles collection refers to User's string ID
     const profileDoc = await studentProfilesCollection.findOne({ userId: userId });
+    
     if (!profileDoc) return null;
-    return { ...profileDoc, id: profileDoc._id.toHexString() } as unknown as StudentProfile;
+    
+    const idStr = profileDoc._id.toHexString();
+    const { _id, ...rest } = profileDoc;
+    return { ...rest, id: idStr, _id: idStr } as unknown as StudentProfile; // Ensure _id is string
   } catch (error) {
     console.error('Error fetching student detailed profile data:', error);
     throw new Error('Failed to fetch student detailed profile data.');
@@ -45,14 +55,19 @@ export async function fetchStudentFullProfileDataAction(userId: string): Promise
 export async function saveStudentProfileDataAction(profileData: StudentProfile): Promise<boolean> {
   try {
     const studentProfilesCollection = await getStudentProfilesCollection();
-    const { id, userId, ...dataToSave } = profileData;
-    const filter = { userId: userId };
+    const { id, userId, _id, ...dataToSave } = profileData; // Remove id, _id from dataToSave
+    
+    // Use userId for querying, as 'id' on StudentProfile is its own _id.toHexString()
+    const filter = { userId: userId }; 
+    // If upserting based on _id (profile's own id), ensure it's an ObjectId
+    // const filter = { _id: new ObjectId(id) }; 
+    
     const updateDoc = { $set: dataToSave };
 
     const result = await studentProfilesCollection.updateOne(
       filter,
       updateDoc,
-      { upsert: true }
+      { upsert: true } // Consider if upsert is always desired here
     );
     return result.modifiedCount === 1 || result.upsertedCount === 1;
   } catch (error) {
@@ -64,10 +79,12 @@ export async function saveStudentProfileDataAction(profileData: StudentProfile):
 export async function saveUserGeneralDataAction(userData: Partial<User> & { id: string }): Promise<boolean> {
      try {
         const usersCollection = await getUsersCollection();
-        const { id, status, ...dataToUpdate } = userData; // Exclude status from general update
+        const { id, status, _id, password, ...dataToUpdate } = userData; // Exclude sensitive/internal fields
+        
+        const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id: id };
         const result = await usersCollection.updateOne(
-            { id: userData.id }, 
-            { $set: dataToUpdate }, // Update specific fields like name, email, avatar
+            filter as any, 
+            { $set: dataToUpdate }, 
             { upsert: false } 
         );
         return result.modifiedCount === 1;
@@ -80,8 +97,9 @@ export async function saveUserGeneralDataAction(userData: Partial<User> & { id: 
 export async function updateUserStatusAction(userId: string, newStatus: UserStatus): Promise<boolean> {
   try {
     const usersCollection = await getUsersCollection();
+    const filter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { id: userId };
     const result = await usersCollection.updateOne(
-      { id: userId },
+      filter as any,
       { $set: { status: newStatus } }
     );
     return result.modifiedCount === 1;
@@ -103,9 +121,12 @@ export async function fetchStudentsForFacultyAction(
     if (filters?.year) query.year = filters.year; 
     if (filters?.section) query.section = filters.section;
 
-    const studentsCursor = studentProfilesCollection.find(query);
-    const studentsArray = await studentsCursor.toArray();
-    return studentsArray.map(s => ({ ...s, id: s._id.toHexString() } as unknown as StudentProfile));
+    const studentsArray = await studentProfilesCollection.find(query).toArray();
+    return studentsArray.map(s => {
+        const idStr = s._id.toHexString();
+        const { _id, ...rest } = s;
+        return { ...rest, id: idStr, _id: idStr } as unknown as StudentProfile; // Ensure _id is string
+    });
   } catch (error) {
     console.error('Error fetching students for faculty:', error);
     throw new Error('Failed to fetch students.');
@@ -120,17 +141,19 @@ export async function fetchAllUsersAction(filters?: { role?: UserRole, status?: 
     if (filters?.status) query.status = filters.status;
 
     const usersArray = await usersCollection.find(query).toArray();
-    return usersArray.map(u => ({ ...u, id: u.id || u._id?.toHexString() }) as User);
+    return usersArray.map(u => {
+        const idStr = u._id.toHexString();
+        const { _id, password, ...rest } = u; // Exclude original _id and password
+        return { ...rest, id: idStr, _id: idStr } as User; // Ensure _id is string
+    });
   } catch (error) {
     console.error('Error fetching all users:', error);
     throw new Error('Failed to fetch all users.');
   }
 }
 
-// This function is typically used for seeding or initial setup by an admin.
-// Registration from UI should use `registerUserAction` from `auth-actions.ts`.
 export async function createUserAction(
-  userData: Pick<User, 'email' | 'name' | 'role'> & { passwordPlainText: string }, // Added password
+  userData: Pick<User, 'email' | 'name' | 'role'> & { passwordPlainText: string },
   studentProfileDetails?: Partial<Omit<StudentProfile, 'userId' | 'id' | '_id' | 'fullName'>> & { fullName?: string }
 ): Promise<{ user: User; studentProfile?: StudentProfile } | null> {
   const usersCollection = await getUsersCollection();
@@ -143,24 +166,25 @@ export async function createUserAction(
   }
 
   const userObjectId = new ObjectId();
-  // For this admin/seed creation, default status to Active. UI registration will use PendingApproval.
+  const userIdStr = userObjectId.toHexString();
   const initialStatus: UserStatus = 'Active'; 
 
   const userDocumentToInsert = {
     _id: userObjectId,
-    id: userObjectId.toHexString(),
+    id: userIdStr,
     email: userData.email.toLowerCase(),
     name: userData.name,
     role: userData.role,
-    password: userData.passwordPlainText, // Storing plain text password - INSECURE for production
-    avatar: `https://picsum.photos/seed/${userObjectId.toHexString()}/100/100`,
+    password: userData.passwordPlainText,
+    avatar: `https://picsum.photos/seed/${userIdStr}/100/100`,
     status: initialStatus, 
   };
 
-  await usersCollection.insertOne(userDocumentToInsert as any); // Cast to any for password
+  await usersCollection.insertOne(userDocumentToInsert as any);
   
   const createdUser: User = {
-    id: userDocumentToInsert.id,
+    id: userIdStr,
+    _id: userIdStr, // Ensure _id is string
     email: userDocumentToInsert.email,
     name: userDocumentToInsert.name,
     role: userDocumentToInsert.role,
@@ -172,8 +196,10 @@ export async function createUserAction(
 
   if (userData.role === 'Student') {
     const studentProfileObjectId = new ObjectId();
+    const studentProfileIdStr = studentProfileObjectId.toHexString();
     const studentProfileDocumentToInsert = {
       _id: studentProfileObjectId,
+      id: studentProfileIdStr, // Store string id
       userId: createdUser.id,
       admissionId: studentProfileDetails?.admissionId || `DEFAULT${Date.now().toString().slice(-4)}`,
       fullName: studentProfileDetails?.fullName || createdUser.name,
@@ -188,10 +214,10 @@ export async function createUserAction(
     };
     await studentProfilesCollection.insertOne(studentProfileDocumentToInsert as any);
 
-    const { _id, ...restOfProfileDoc } = studentProfileDocumentToInsert;
+    const { _id, ...restOfProfileDoc } = studentProfileDocumentToInsert; // Exclude ObjectId _id
     createdStudentProfile = {
-      ...restOfProfileDoc,
-      id: studentProfileObjectId.toHexString(),
+      ...restOfProfileDoc, // restOfProfileDoc already has string id
+      _id: studentProfileIdStr, // Ensure _id is string
     } as StudentProfile;
   }
 

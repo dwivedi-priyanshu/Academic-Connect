@@ -1,4 +1,3 @@
-
 'use server';
 
 import { connectToDatabase } from '@/lib/mongodb';
@@ -34,17 +33,21 @@ export async function fetchStudentMoocsAction(studentId: string): Promise<MoocCo
     const moocsCollection = await getMoocsCollection();
     const moocsCursor = moocsCollection.find({ studentId });
     const moocsArray = await moocsCursor.toArray();
-    return moocsArray.map(mooc => ({ ...mooc, id: mooc._id.toHexString() } as MoocCourse));
+    return moocsArray.map(mooc => {
+        const idStr = mooc._id.toHexString();
+        const { _id, ...rest } = mooc;
+        return { ...rest, id: idStr, _id: idStr } as MoocCourse;
+    });
   } catch (error) {
     console.error('Error fetching student MOOCs:', error);
     throw new Error('Failed to fetch MOOCs.');
   }
 }
 
-export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 'submittedDate' | 'status'> & { id?: string }, studentId: string): Promise<MoocCourse> {
+export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 'submittedDate' | 'status' | '_id'> & { id?: string }, studentId: string): Promise<MoocCourse> {
   try {
     const moocsCollection = await getMoocsCollection();
-    let savedMooc;
+    let savedMooc: MoocCourse;
 
     if (moocData.id && moocData.id !== 'new') { // Update existing
       const { id, ...dataToUpdate } = moocData;
@@ -54,18 +57,23 @@ export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 's
         { returnDocument: 'after' }
       );
       if (!result) throw new Error('MOOC not found or access denied.');
-      savedMooc = result as MoocCourse;
+      const updatedDoc = result as MoocCourse; // result is the document itself
+      const idStr = updatedDoc._id.toHexString();
+      const { _id, ...rest } = updatedDoc;
+      savedMooc = { ...rest, id: idStr, _id: idStr } as MoocCourse;
     } else { // Create new
-      const newMooc: Omit<MoocCourse, 'id' | '_id'> = {
+      const newMoocInternal: Omit<MoocCourse, 'id' | '_id'> = {
         ...moocData,
         studentId,
         submittedDate: new Date().toISOString(),
         status: 'Pending',
       };
-      const result = await moocsCollection.insertOne(newMooc as MoocCourse);
-      savedMooc = { ...newMooc, id: result.insertedId.toHexString() } as MoocCourse;
+      const result = await moocsCollection.insertOne(newMoocInternal as MoocCourse);
+      const insertedIdStr = result.insertedId.toHexString();
+      // Construct the object for return, ensuring no ObjectId
+      savedMooc = { ...newMoocInternal, id: insertedIdStr, _id: insertedIdStr } as MoocCourse;
     }
-    return { ...savedMooc, id: savedMooc._id.toHexString()} as MoocCourse;
+    return savedMooc;
   } catch (error) {
     console.error('Error saving MOOC:', error);
     throw new Error('Failed to save MOOC.');
@@ -89,17 +97,21 @@ export async function fetchStudentProjectsAction(studentId: string): Promise<Min
     const projectsCollection = await getProjectsCollection();
     const projectsCursor = projectsCollection.find({ studentId });
     const projectsArray = await projectsCursor.toArray();
-    return projectsArray.map(proj => ({ ...proj, id: proj._id.toHexString() } as MiniProject));
+    return projectsArray.map(proj => {
+        const idStr = proj._id.toHexString();
+        const { _id, ...rest } = proj;
+        return { ...rest, id: idStr, _id: idStr } as MiniProject;
+    });
   } catch (error) {
     console.error('Error fetching student projects:', error);
     throw new Error('Failed to fetch projects.');
   }
 }
 
-export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'id' | 'submittedDate' | 'status'> & { id?: string }, studentId: string): Promise<MiniProject> {
+export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'id' | 'submittedDate' | 'status' | '_id'> & { id?: string }, studentId: string): Promise<MiniProject> {
   try {
     const projectsCollection = await getProjectsCollection();
-    let savedProject;
+    let savedProject: MiniProject;
 
     if (projectData.id && projectData.id !== 'new') { // Update existing
       const { id, ...dataToUpdate } = projectData;
@@ -109,19 +121,23 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
         { returnDocument: 'after' }
       );
       if (!result) throw new Error('Project not found or access denied.');
-      savedProject = result as MiniProject;
+      const updatedDoc = result as MiniProject;
+      const idStr = updatedDoc._id.toHexString();
+      const { _id, ...rest } = updatedDoc;
+      savedProject = { ...rest, id: idStr, _id: idStr } as MiniProject;
 
     } else { // Create new
-      const newProject: Omit<MiniProject, 'id' | '_id'> = {
+      const newProjectInternal: Omit<MiniProject, 'id' | '_id'> = {
         ...projectData,
         studentId,
         submittedDate: new Date().toISOString(),
         status: 'Pending',
       };
-      const result = await projectsCollection.insertOne(newProject as MiniProject);
-      savedProject = { ...newProject, id: result.insertedId.toHexString() } as MiniProject;
+      const result = await projectsCollection.insertOne(newProjectInternal as MiniProject);
+      const insertedIdStr = result.insertedId.toHexString();
+      savedProject = { ...newProjectInternal, id: insertedIdStr, _id: insertedIdStr } as MiniProject;
     }
-     return { ...savedProject, id: savedProject._id.toHexString()} as MiniProject;
+     return savedProject;
   } catch (error) {
     console.error('Error saving project:', error);
     throw new Error('Failed to save project.');
@@ -142,18 +158,23 @@ export async function deleteStudentProjectAction(projectId: string, studentId: s
 // Faculty Approval Actions
 export async function fetchPendingSubmissionsAction(facultyId: string): Promise<{ projects: MiniProject[], moocs: MoocCourse[] }> {
   try {
-    // In a real app, facultyId would be used to filter submissions
-    // for students associated with this faculty.
-    // For now, fetching all pending.
     console.log(`Fetching pending submissions (faculty: ${facultyId})`);
     
     const projectsCollection = await getProjectsCollection();
     const pendingProjectsCursor = projectsCollection.find({ status: 'Pending' });
-    const pendingProjectsArray = (await pendingProjectsCursor.toArray()).map(p => ({...p, id: p._id.toHexString()}) as MiniProject);
+    const pendingProjectsArray = (await pendingProjectsCursor.toArray()).map(p => {
+        const idStr = p._id.toHexString();
+        const { _id, ...rest } = p;
+        return { ...rest, id: idStr, _id: idStr } as MiniProject;
+    });
 
     const moocsCollection = await getMoocsCollection();
     const pendingMoocsCursor = moocsCollection.find({ status: 'Pending' });
-    const pendingMoocsArray = (await pendingMoocsCursor.toArray()).map(m => ({...m, id: m._id.toHexString()}) as MoocCourse);
+    const pendingMoocsArray = (await pendingMoocsCursor.toArray()).map(m => {
+        const idStr = m._id.toHexString();
+        const { _id, ...rest } = m;
+        return { ...rest, id: idStr, _id: idStr } as MoocCourse;
+    });
     
     return { projects: pendingProjectsArray, moocs: pendingMoocsArray };
   } catch (error) {
@@ -173,7 +194,7 @@ export async function updateSubmissionStatusAction(
     const collection = type === 'project' ? await getProjectsCollection() : await getMoocsCollection();
     const result = await collection.updateOne(
       { _id: new ObjectId(submissionId) },
-      { $set: { status, remarks, facultyId } }
+      { $set: { status, remarks, facultyId } } // facultyId who approved/rejected
     );
     return result.modifiedCount === 1;
   } catch (error) {
