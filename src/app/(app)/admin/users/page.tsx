@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { User, UserStatus } from '@/types'; // Removed StudentProfile as it's not directly used here
+import type { User, UserStatus } from '@/types'; 
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fetchAllUsersAction, updateUserStatusAction } from '@/actions/profile-actions';
@@ -51,11 +50,11 @@ export default function AdminUsersPage() {
   useEffect(() => {
     loadUsers(activeTab);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, activeTab]); // Removed toast from deps, as it's stable
+  }, [user, activeTab]); 
 
   const handleOpenUsnModal = (userToApprove: User) => {
     setSelectedUserForApproval(userToApprove);
-    setAdmissionIdInput(""); // Clear previous input
+    setAdmissionIdInput(""); 
     setIsUsnModalOpen(true);
   };
 
@@ -64,12 +63,19 @@ export default function AdminUsersPage() {
       toast({ title: "Error", description: "Admission ID (USN) is required.", variant: "destructive" });
       return;
     }
-    setIsLoading(true); // Indicate loading for the specific action
+    setIsLoading(true); 
     setIsUsnModalOpen(false);
     try {
         const success = await updateUserStatusAction(selectedUserForApproval.id, 'Active', admissionIdInput.trim().toUpperCase());
         if (success) {
-            toast({ title: "Student Approved", description: `${selectedUserForApproval.name}'s account is now Active with USN: ${admissionIdInput.trim().toUpperCase()}.`, className: "bg-success text-success-foreground" });
+            // Changed description string construction
+            const descriptionMessage = "The account for " + selectedUserForApproval.name + 
+                                     " is now Active with USN: " + admissionIdInput.trim().toUpperCase() + ".";
+            toast({ 
+                title: "Student Approved", 
+                description: descriptionMessage, 
+                className: "bg-success text-success-foreground" 
+            });
             loadUsers(activeTab); 
         } else {
             toast({ title: "Approval Failed", description: `Could not approve ${selectedUserForApproval.name}. The user status might not have changed, or the USN update failed.`, variant: "destructive" });
@@ -80,22 +86,19 @@ export default function AdminUsersPage() {
     } finally {
         setSelectedUserForApproval(null);
         setAdmissionIdInput("");
-        setIsLoading(false); // Stop loading indicator
+        setIsLoading(false); 
     }
   };
 
 
   const handleUpdateStatus = async (targetUser: User, newStatus: UserStatus) => {
-    // If approving a 'PendingApproval' student to 'Active', trigger USN modal
     if (targetUser.role === 'Student' && newStatus === 'Active' && targetUser.status === 'PendingApproval') {
         handleOpenUsnModal(targetUser);
         return;
     }
 
-    // For other status changes (Reject, Disable, Activate non-student or already approved student)
     setIsLoading(true); 
     try {
-        // Pass undefined for admissionId if not assigning/changing it
         const success = await updateUserStatusAction(targetUser.id, newStatus, undefined);
         if (success) {
             toast({ title: "Status Updated", description: `${targetUser.name}'s status changed to ${newStatus}.`, className: "bg-success text-success-foreground" });
@@ -119,22 +122,22 @@ export default function AdminUsersPage() {
     switch (status) {
         case 'Active':
             IconComponent = CheckCircle;
-            variant = "default"; // Will use theme's default (often primary if not overridden by custom class)
+            variant = "default"; 
             badgeClassName = "bg-success text-success-foreground hover:bg-success/90";
             break;
         case 'PendingApproval':
             IconComponent = Hourglass;
-            variant = "default"; // Using default, but custom class makes it yellow
+            variant = "default"; 
             badgeClassName = "bg-warning text-warning-foreground hover:bg-warning/90";
             break;
         case 'Rejected':
         case 'Disabled':
             IconComponent = XCircle;
-            variant = "destructive"; // Uses theme's destructive
+            variant = "destructive"; 
             break;
         default:
             IconComponent = Hourglass; 
-            variant = "secondary"; // Uses theme's secondary
+            variant = "secondary"; 
     }
     return (
       <Badge variant={variant} className={cn("capitalize", badgeClassName)}>
@@ -159,7 +162,7 @@ export default function AdminUsersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold flex items-center"><ShieldCheck className="mr-2 h-8 w-8 text-primary" /> User Management</h1>
-        <Button disabled> {/* TODO: Implement add user functionality via a modal/form */}
+        <Button disabled> 
           <UserPlus className="mr-2 h-4 w-4" /> Add New User (Coming Soon)
         </Button>
       </div>
@@ -234,7 +237,6 @@ export default function AdminUsersPage() {
                                         <CheckCircle className="mr-1 h-4 w-4"/> Re-Activate
                                     </Button>
                                 )}
-                                {/* Add Edit User button later if needed */}
                             </TableCell>
                         </TableRow>
                     ))}
@@ -249,11 +251,11 @@ export default function AdminUsersPage() {
 
       <Dialog open={isUsnModalOpen} onOpenChange={(isOpen) => {
           setIsUsnModalOpen(isOpen);
-          if (!isOpen) setSelectedUserForApproval(null); // Clear selection on close
+          if (!isOpen) setSelectedUserForApproval(null); 
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Approve Student & Assign USN</DialogTitle>
+            <DialogTitle>Approve Student &amp; Assign USN</DialogTitle>
             <DialogDescription>
               To activate the student account for <span className="font-semibold">{selectedUserForApproval?.name}</span> ({selectedUserForApproval?.email}), please assign their unique Admission ID (USN).
             </DialogDescription>
@@ -266,7 +268,7 @@ export default function AdminUsersPage() {
               <Input
                 id="admissionId"
                 value={admissionIdInput}
-                onChange={(e) => setAdmissionIdInput(e.target.value.toUpperCase())} // Standardize to uppercase
+                onChange={(e) => setAdmissionIdInput(e.target.value.toUpperCase())} 
                 placeholder="e.g., 1RN21CS001"
                 className="bg-background"
                 required
@@ -277,7 +279,7 @@ export default function AdminUsersPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => {setIsUsnModalOpen(false); setSelectedUserForApproval(null);}} disabled={isLoading}>Cancel</Button>
             <Button onClick={handleConfirmApprovalWithUsn} className="bg-success hover:bg-success/90 text-success-foreground" disabled={isLoading || !admissionIdInput.trim()}>
-              <CheckCircle className="mr-2 h-4 w-4" /> {isLoading ? 'Processing...' : 'Approve & Assign USN'}
+              <CheckCircle className="mr-2 h-4 w-4" /> {isLoading ? 'Processing...' : 'Approve &amp; Assign USN'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -285,8 +287,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
-```
-  </change>
-  <change>
-    <file>src/app/(app)/faculty/marks-entry
