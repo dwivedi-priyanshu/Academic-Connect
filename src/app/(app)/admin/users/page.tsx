@@ -12,7 +12,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { fetchAllUsersAction, updateUserStatusAction } from '@/actions/profile-actions';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from '@/lib/utils';
 
 
 export default function AdminUsersPage() {
