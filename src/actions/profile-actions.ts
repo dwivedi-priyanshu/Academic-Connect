@@ -1,9 +1,8 @@
-
 'use server';
 
 import { connectToDatabase } from '@/lib/mongodb';
-import { USERS_COLLECTION, STUDENT_PROFILES_COLLECTION, mapMongoId } from '@/lib/constants';
-import type { User, StudentProfile } from '@/types';
+import { USERS_COLLECTION, STUDENT_PROFILES_COLLECTION } from '@/lib/constants';
+import type { User, StudentProfile, UserRole } from '@/types';
 import type { Collection } from 'mongodb';
 import { ObjectId } from 'mongodb';
 
@@ -20,10 +19,14 @@ async function getStudentProfilesCollection(): Promise<Collection<StudentProfile
 export async function fetchUserProfileDataAction(userId: string): Promise<User | null> {
   try {
     const usersCollection = await getUsersCollection();
-    const userDoc = await usersCollection.findOne({ id: userId }); // Assuming User has 'id' not '_id' from mock
+    // User documents in DB have 'id' field which is a string version of _id
+    const userDoc = await usersCollection.findOne({ id: userId }); 
     if (!userDoc) return null;
-    // For this mock setup, User object doesn't use MongoDB _id, it uses the mock id.
-    return userDoc;
+    // The User type expects 'id' as string, and _id is optional.
+    // If userDoc comes from DB findOne, _id is ObjectId.
+    // Ensure the returned object matches the User type, mapping _id if necessary.
+    // For this setup, it's assumed userDoc from DB already has 'id' correctly populated or mapped.
+    return { ...userDoc, id: userDoc.id || userDoc._id?.toHexString() } as User;
   } catch (error) {
     console.error('Error fetching user profile data:', error);
     throw new Error('Failed to fetch user profile data.');
@@ -36,7 +39,8 @@ export async function fetchStudentFullProfileDataAction(userId: string): Promise
     // StudentProfile's main identifier for linking is userId. _id is mongo's internal.
     const profileDoc = await studentProfilesCollection.findOne({ userId: userId });
     if (!profileDoc) return null;
-    return { ...profileDoc, id: profileDoc._id.toHexString() } as unknown as StudentProfile; // Map _id to id for consistency if StudentProfile type expects 'id' field from mongo
+    // Map MongoDB's _id (ObjectId) to a string 'id' field for the StudentProfile type
+    return { ...profileDoc, id: profileDoc._id.toHexString() } as unknown as StudentProfile;
   } catch (error) {
     console.error('Error fetching student detailed profile data:', error);
     throw new Error('Failed to fetch student detailed profile data.');
@@ -47,12 +51,21 @@ export async function fetchStudentFullProfileDataAction(userId: string): Promise
 export async function saveStudentProfileDataAction(profileData: StudentProfile): Promise<boolean> {
   try {
     const studentProfilesCollection = await getStudentProfilesCollection();
-    const { userId, ...dataToSave } = profileData;
+    // When saving, we expect profileData.id to be the string version of _id for an existing profile.
+    // For upserting based on userId, we filter by userId.
+    // The actual document _id should be an ObjectId.
+    
+    // If profileData.id exists and is a valid ObjectId hex string, use it to target the document.
+    // Otherwise, this is effectively an insert based on userId if no match.
+    const { id, userId, ...dataToSave } = profileData;
 
-    // Upsert based on userId. This means if a profile for this userId exists, it's updated. Otherwise, it's inserted.
+    const filter = { userId: userId };
+    // Ensure _id is not part of $set if it's derived or handled by MongoDB
+    const updateDoc = { $set: dataToSave };
+
     const result = await studentProfilesCollection.updateOne(
-      { userId: userId },
-      { $set: dataToSave },
+      filter,
+      updateDoc,
       { upsert: true }
     );
     return result.modifiedCount === 1 || result.upsertedCount === 1;
@@ -62,17 +75,14 @@ export async function saveStudentProfileDataAction(profileData: StudentProfile):
   }
 }
 
-// Placeholder for saving general user data if needed (e.g. faculty name update)
-// This would update the 'users' collection.
 export async function saveUserGeneralDataAction(userData: User): Promise<boolean> {
      try {
         const usersCollection = await getUsersCollection();
-        // Assuming 'id' is the unique identifier for User objects from the mock.
-        // In a real system with MongoDB, you'd likely use _id.
+        // User data has 'id' as the string identifier. This should match the 'id' field in the DB.
         const result = await usersCollection.updateOne(
             { id: userData.id }, 
-            { $set: { name: userData.name, email: userData.email, avatar: userData.avatar } }, // Only update specific fields
-            { upsert: false } // Don't upsert, user should exist
+            { $set: { name: userData.name, email: userData.email, avatar: userData.avatar } },
+            { upsert: false } 
         );
         return result.modifiedCount === 1;
     } catch (error) {
@@ -81,24 +91,20 @@ export async function saveUserGeneralDataAction(userData: User): Promise<boolean
     }
 }
 
-
-// Action for faculty to fetch a list of students
-// Potentially filtered by department, year, section if faculty is associated with them.
-// For now, a simplified version that might fetch students based on some criteria or all.
 export async function fetchStudentsForFacultyAction(
-  facultyId: string, // To determine which students this faculty can see
+  facultyId: string, 
   filters?: { year?: number; section?: string; department?: string; }
 ): Promise<StudentProfile[]> {
   try {
     const studentProfilesCollection = await getStudentProfilesCollection();
-    // Example: Simple filter, in real app, this would be more complex based on faculty's associations
-    const query: Partial<StudentProfile> = {};
+    const query: any = {}; // Use 'any' for query flexibility
     if (filters?.department) query.department = filters.department;
-    if (filters?.year) query.year = filters.year;
+    if (filters?.year) query.year = filters.year; // Ensure year is number
     if (filters?.section) query.section = filters.section;
 
     const studentsCursor = studentProfilesCollection.find(query);
     const studentsArray = await studentsCursor.toArray();
+    // Map MongoDB _id to string id for each student profile
     return studentsArray.map(s => ({ ...s, id: s._id.toHexString() } as unknown as StudentProfile));
   } catch (error) {
     console.error('Error fetching students for faculty:', error);
@@ -106,18 +112,83 @@ export async function fetchStudentsForFacultyAction(
   }
 }
 
-// Action for admin to fetch all users
 export async function fetchAllUsersAction(): Promise<User[]> {
   try {
     const usersCollection = await getUsersCollection();
-    // Assuming User objects in DB have 'id' field as per mock structure.
-    // If User objects use MongoDB's _id, then mapping would be needed.
-    // For this simplified setup, we assume 'id' field exists and is queryable.
     const usersArray = await usersCollection.find({}).toArray();
-    // No _id to id mapping needed here if User type expects 'id' and DB stores it as 'id'.
-    return usersArray;
+    // Ensure returned users match User type, mapping _id to id if necessary.
+    // Assuming 'id' field is already the string representation in the DB.
+    return usersArray.map(u => ({ ...u, id: u.id || u._id?.toHexString() }) as User);
   } catch (error) {
     console.error('Error fetching all users:', error);
     throw new Error('Failed to fetch all users.');
   }
+}
+
+export async function createUserAction(
+  userData: Pick<User, 'email' | 'name' | 'role'>,
+  studentProfileDetails?: Partial<Omit<StudentProfile, 'userId' | 'id' | '_id' | 'fullName'>> & { fullName?: string }
+): Promise<{ user: User; studentProfile?: StudentProfile } | null> {
+  const usersCollection = await getUsersCollection();
+  const studentProfilesCollection = await getStudentProfilesCollection();
+
+  const existingUser = await usersCollection.findOne({ email: userData.email.toLowerCase() });
+  if (existingUser) {
+    console.warn(`User with email ${userData.email} already exists.`);
+    // throw new Error(`User with email ${userData.email} already exists.`);
+    return null; // Indicate failure or that user already exists
+  }
+
+  const userObjectId = new ObjectId();
+  // Document to be inserted into the 'users' collection
+  const userDocumentToInsert = {
+    _id: userObjectId,
+    id: userObjectId.toHexString(), // String version of ObjectId, for querying by 'id'
+    email: userData.email.toLowerCase(),
+    name: userData.name,
+    role: userData.role,
+    avatar: `https://picsum.photos/seed/${userObjectId.toHexString()}/100/100`,
+  };
+
+  await usersCollection.insertOne(userDocumentToInsert);
+  
+  // Construct the User object as expected by the User type (string id, no _id)
+  const createdUser: User = {
+    id: userDocumentToInsert.id,
+    email: userDocumentToInsert.email,
+    name: userDocumentToInsert.name,
+    role: userDocumentToInsert.role,
+    avatar: userDocumentToInsert.avatar,
+  };
+
+  let createdStudentProfile: StudentProfile | undefined = undefined;
+
+  if (userData.role === 'Student') {
+    const studentProfileObjectId = new ObjectId();
+    // Document for 'student_profiles' collection
+    const studentProfileDocumentToInsert = {
+      _id: studentProfileObjectId,
+      userId: createdUser.id, // Link to the User's string id
+      admissionId: studentProfileDetails?.admissionId || `DEFAULT${Date.now().toString().slice(-4)}`,
+      fullName: studentProfileDetails?.fullName || createdUser.name,
+      dateOfBirth: studentProfileDetails?.dateOfBirth || 'N/A',
+      contactNumber: studentProfileDetails?.contactNumber || 'N/A',
+      address: studentProfileDetails?.address || 'N/A',
+      department: studentProfileDetails?.department || 'Not Specified',
+      year: studentProfileDetails?.year || 1,
+      section: studentProfileDetails?.section || 'N/A',
+      parentName: studentProfileDetails?.parentName || 'N/A',
+      parentContact: studentProfileDetails?.parentContact || 'N/A',
+    };
+    await studentProfilesCollection.insertOne(studentProfileDocumentToInsert);
+
+    // Construct StudentProfile object as expected by the type (string id, no _id)
+    const { _id, ...restOfProfileDoc } = studentProfileDocumentToInsert;
+    createdStudentProfile = {
+      ...restOfProfileDoc,
+      id: studentProfileObjectId.toHexString(), // The profile's own unique string ID
+    } as StudentProfile;
+  }
+
+  return { user: createdUser, studentProfile: createdStudentProfile };
 }
