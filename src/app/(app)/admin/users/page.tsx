@@ -3,10 +3,10 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass } from 'lucide-react';
+import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { User, UserStatus } from '@/types';
+import type { User, UserStatus, StudentProfile } from '@/types';
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fetchAllUsersAction, updateUserStatusAction } from '@/actions/profile-actions';
@@ -14,6 +14,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 
 export default function AdminUsersPage() {
@@ -22,6 +25,10 @@ export default function AdminUsersPage() {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<UserStatus | 'all'>('all');
+
+  const [isUsnModalOpen, setIsUsnModalOpen] = useState(false);
+  const [selectedUserForApproval, setSelectedUserForApproval] = useState<User | null>(null);
+  const [admissionIdInput, setAdmissionIdInput] = useState("");
 
 
   const loadUsers = (statusFilter?: UserStatus | 'all') => {
@@ -46,15 +53,52 @@ export default function AdminUsersPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, activeTab, toast]);
 
-  const handleUpdateStatus = async (userId: string, newStatus: UserStatus, userName: string) => {
-    setIsLoading(true); // Can use a more specific loading state if preferred
+  const handleOpenUsnModal = (userToApprove: User) => {
+    setSelectedUserForApproval(userToApprove);
+    setAdmissionIdInput(""); // Clear previous input
+    setIsUsnModalOpen(true);
+  };
+
+  const handleConfirmApprovalWithUsn = async () => {
+    if (!selectedUserForApproval || !admissionIdInput.trim()) {
+      toast({ title: "Error", description: "Admission ID (USN) is required.", variant: "destructive" });
+      return;
+    }
+    setIsLoading(true);
+    setIsUsnModalOpen(false);
     try {
-        const success = await updateUserStatusAction(userId, newStatus);
+        const success = await updateUserStatusAction(selectedUserForApproval.id, 'Active', admissionIdInput.trim());
         if (success) {
-            toast({ title: "Status Updated", description: `${userName}'s status changed to ${newStatus}.`, className: "bg-success text-success-foreground" });
-            loadUsers(activeTab); // Refresh user list
+            toast({ title: "Student Approved", description: `${selectedUserForApproval.name}'s account is now Active with USN: ${admissionIdInput.trim()}.`, className: "bg-success text-success-foreground" });
+            loadUsers(activeTab); 
         } else {
-            toast({ title: "Update Failed", description: `Could not update status for ${userName}.`, variant: "destructive" });
+            toast({ title: "Approval Failed", description: `Could not approve ${selectedUserForApproval.name}.`, variant: "destructive" });
+        }
+    } catch (error) {
+        console.error("Error approving student:", error);
+        toast({ title: "Error", description: `Failed to approve student: ${(error as Error).message}`, variant: "destructive" });
+    } finally {
+        setSelectedUserForApproval(null);
+        setAdmissionIdInput("");
+        setIsLoading(false);
+    }
+  };
+
+
+  const handleUpdateStatus = async (targetUser: User, newStatus: UserStatus) => {
+    if (targetUser.role === 'Student' && newStatus === 'Active' && targetUser.status === 'PendingApproval') {
+        handleOpenUsnModal(targetUser);
+        return;
+    }
+
+    setIsLoading(true); 
+    try {
+        const success = await updateUserStatusAction(targetUser.id, newStatus);
+        if (success) {
+            toast({ title: "Status Updated", description: `${targetUser.name}'s status changed to ${newStatus}.`, className: "bg-success text-success-foreground" });
+            loadUsers(activeTab); 
+        } else {
+            toast({ title: "Update Failed", description: `Could not update status for ${targetUser.name}.`, variant: "destructive" });
         }
     } catch (error) {
         console.error("Error updating user status:", error);
@@ -67,18 +111,18 @@ export default function AdminUsersPage() {
   const StatusBadge = ({ status }: { status: UserStatus }) => {
     let IconComponent = Hourglass;
     let variant: "default" | "secondary" | "destructive" | "outline" = "default";
-    let className = "";
+    let badgeClassName = ""; // Changed from `className` to avoid conflict
 
     switch (status) {
         case 'Active':
             IconComponent = CheckCircle;
             variant = "default";
-            className = "bg-success text-success-foreground hover:bg-success/90";
+            badgeClassName = "bg-success text-success-foreground hover:bg-success/90";
             break;
         case 'PendingApproval':
             IconComponent = Hourglass;
             variant = "default";
-            className = "bg-warning text-warning-foreground hover:bg-warning/90";
+            badgeClassName = "bg-warning text-warning-foreground hover:bg-warning/90";
             break;
         case 'Rejected':
         case 'Disabled':
@@ -86,11 +130,11 @@ export default function AdminUsersPage() {
             variant = "destructive";
             break;
         default:
-            IconComponent = Hourglass; // Default for any other status
+            IconComponent = Hourglass; 
             variant = "secondary";
     }
     return (
-      <Badge variant={variant} className={cn("capitalize", className)}>
+      <Badge variant={variant} className={cn("capitalize", badgeClassName)}>
         <IconComponent className="mr-1 h-3 w-3" />
         {status === 'PendingApproval' ? 'Pending' : status}
       </Badge>
@@ -127,7 +171,7 @@ export default function AdminUsersPage() {
           <CardDescription>Manage user accounts, roles, and statuses.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && !isUsnModalOpen ? ( // Prevent table skeleton flashing when modal is open
             <Table>
                 <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                 <TableBody>
@@ -163,25 +207,25 @@ export default function AdminUsersPage() {
                             <TableCell className="text-right space-x-1">
                                 {u.status === 'PendingApproval' && (
                                     <>
-                                    <Button variant="ghost" size="sm" className="text-success hover:bg-success/10 hover:text-success" onClick={() => handleUpdateStatus(u.id, 'Active', u.name)} disabled={isLoading}>
+                                    <Button variant="ghost" size="sm" className="text-success hover:bg-success/10 hover:text-success" onClick={() => handleUpdateStatus(u, 'Active')} disabled={isLoading}>
                                         <CheckCircle className="mr-1 h-4 w-4"/> Approve
                                     </Button>
-                                    <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleUpdateStatus(u.id, 'Rejected', u.name)} disabled={isLoading}>
+                                    <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleUpdateStatus(u, 'Rejected')} disabled={isLoading}>
                                         <XCircle className="mr-1 h-4 w-4"/> Reject
                                     </Button>
                                     </>
                                 )}
-                                {u.status === 'Active' && (
-                                     <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleUpdateStatus(u.id, 'Disabled', u.name)} disabled={isLoading}>
+                                {u.status === 'Active' && u.id !== user.id && ( // Admin cannot disable self
+                                     <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleUpdateStatus(u, 'Disabled')} disabled={isLoading}>
                                         <XCircle className="mr-1 h-4 w-4"/> Disable
                                     </Button>
                                 )}
                                 {(u.status === 'Rejected' || u.status === 'Disabled') && (
-                                     <Button variant="ghost" size="sm" className="text-success hover:bg-success/10 hover:text-success" onClick={() => handleUpdateStatus(u.id, 'Active', u.name)} disabled={isLoading}>
+                                     <Button variant="ghost" size="sm" className="text-success hover:bg-success/10 hover:text-success" onClick={() => handleUpdateStatus(u, 'Active')} disabled={isLoading}>
                                         <CheckCircle className="mr-1 h-4 w-4"/> Activate
                                     </Button>
                                 )}
-                                <Button variant="outline" size="sm" disabled>Edit</Button> {/* TODO: Implement edit */}
+                                {/* <Button variant="outline" size="sm" disabled>Edit</Button> */}
                             </TableCell>
                         </TableRow>
                     ))}
@@ -193,6 +237,38 @@ export default function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={isUsnModalOpen} onOpenChange={setIsUsnModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Approve Student & Assign USN</DialogTitle>
+            <DialogDescription>
+              Assign an Admission ID (USN) to student <span className="font-semibold">{selectedUserForApproval?.name}</span> ({selectedUserForApproval?.email}).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="admissionId" className="flex items-center">
+                <KeyRound className="mr-2 h-4 w-4 text-muted-foreground"/> Admission ID (USN)
+              </Label>
+              <Input
+                id="admissionId"
+                value={admissionIdInput}
+                onChange={(e) => setAdmissionIdInput(e.target.value.toUpperCase())}
+                placeholder="e.g., 1RN21CS001"
+                className="bg-background"
+                required
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {setIsUsnModalOpen(false); setSelectedUserForApproval(null);}} disabled={isLoading}>Cancel</Button>
+            <Button onClick={handleConfirmApprovalWithUsn} className="bg-success hover:bg-success/90 text-success-foreground" disabled={isLoading || !admissionIdInput.trim()}>
+              <CheckCircle className="mr-2 h-4 w-4" /> {isLoading ? 'Approving...' : 'Approve & Assign USN'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

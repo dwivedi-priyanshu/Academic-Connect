@@ -1,9 +1,10 @@
+
 'use server';
 
 import { connectToDatabase } from '@/lib/mongodb';
 import { USERS_COLLECTION, STUDENT_PROFILES_COLLECTION } from '@/lib/constants';
 import type { User, StudentProfile, UserRole, UserStatus } from '@/types';
-import type { Collection } from 'mongodb';
+import type { Collection, Filter } from 'mongodb';
 import { ObjectId } from 'mongodb';
 
 async function getUsersCollection(): Promise<Collection<User>> {
@@ -67,7 +68,7 @@ export async function saveStudentProfileDataAction(profileData: StudentProfile):
     const result = await studentProfilesCollection.updateOne(
       filter,
       updateDoc,
-      { upsert: true } // Consider if upsert is always desired here
+      { upsert: true } 
     );
     return result.modifiedCount === 1 || result.upsertedCount === 1;
   } catch (error) {
@@ -94,15 +95,38 @@ export async function saveUserGeneralDataAction(userData: Partial<User> & { id: 
     }
 }
 
-export async function updateUserStatusAction(userId: string, newStatus: UserStatus): Promise<boolean> {
+export async function updateUserStatusAction(userId: string, newStatus: UserStatus, admissionId?: string): Promise<boolean> {
   try {
     const usersCollection = await getUsersCollection();
-    const filter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { id: userId };
-    const result = await usersCollection.updateOne(
-      filter as any,
+    const studentProfilesCollection = await getStudentProfilesCollection();
+
+    const userFilter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { id: userId };
+    
+    const userToUpdate = await usersCollection.findOne(userFilter as any);
+    if (!userToUpdate) {
+      throw new Error(`User with ID ${userId} not found.`);
+    }
+
+    const userUpdateResult = await usersCollection.updateOne(
+      userFilter as any,
       { $set: { status: newStatus } }
     );
-    return result.modifiedCount === 1;
+
+    // If student is being activated and admissionId is provided, update their profile
+    if (userToUpdate.role === 'Student' && newStatus === 'Active' && admissionId) {
+      const studentProfileUpdateResult = await studentProfilesCollection.updateOne(
+        { userId: userId }, // Find student profile by their user ID
+        { $set: { admissionId: admissionId.toUpperCase() } }
+      );
+      if (studentProfileUpdateResult.matchedCount === 0) {
+        console.warn(`No student profile found for user ${userId} to update admissionId.`);
+        // Depending on desired behavior, you might want to throw an error or handle this
+      }
+      // Return true if user status was updated, even if profile update didn't match (though it should)
+      return userUpdateResult.modifiedCount === 1;
+    }
+
+    return userUpdateResult.modifiedCount === 1;
   } catch (error) {
     console.error(`Error updating status for user ${userId}:`, error);
     throw new Error('Failed to update user status.');
@@ -111,21 +135,30 @@ export async function updateUserStatusAction(userId: string, newStatus: UserStat
 
 
 export async function fetchStudentsForFacultyAction(
-  facultyId: string, 
+  facultyId: string, // facultyId might be used later for authorization/filtering by assigned classes
   filters?: { year?: number; section?: string; department?: string; }
 ): Promise<StudentProfile[]> {
   try {
     const studentProfilesCollection = await getStudentProfilesCollection();
-    const query: any = {}; 
+    const query: Filter<StudentProfile> = {}; 
+    
     if (filters?.department) query.department = filters.department;
     if (filters?.year) query.year = filters.year; 
     if (filters?.section) query.section = filters.section;
+
+    // Ensure only students with 'Active' user status are fetched
+    const usersCollection = await getUsersCollection();
+    const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1 }).toArray();
+    const activeStudentUserIds = activeStudentUsers.map(u => u.id);
+
+    query.userId = { $in: activeStudentUserIds };
+
 
     const studentsArray = await studentProfilesCollection.find(query).toArray();
     return studentsArray.map(s => {
         const idStr = s._id.toHexString();
         const { _id, ...rest } = s;
-        return { ...rest, id: idStr, _id: idStr } as unknown as StudentProfile; // Ensure _id is string
+        return { ...rest, id: idStr, _id: idStr } as unknown as StudentProfile; 
     });
   } catch (error) {
     console.error('Error fetching students for faculty:', error);
@@ -136,15 +169,15 @@ export async function fetchStudentsForFacultyAction(
 export async function fetchAllUsersAction(filters?: { role?: UserRole, status?: UserStatus }): Promise<User[]> {
   try {
     const usersCollection = await getUsersCollection();
-    const query: any = {};
+    const query: Filter<User> = {};
     if (filters?.role) query.role = filters.role;
     if (filters?.status) query.status = filters.status;
 
     const usersArray = await usersCollection.find(query).toArray();
     return usersArray.map(u => {
         const idStr = u._id.toHexString();
-        const { _id, password, ...rest } = u; // Exclude original _id and password
-        return { ...rest, id: idStr, _id: idStr } as User; // Ensure _id is string
+        const { _id, password, ...rest } = u; 
+        return { ...rest, id: idStr, _id: idStr } as User; 
     });
   } catch (error) {
     console.error('Error fetching all users:', error);
@@ -167,7 +200,13 @@ export async function createUserAction(
 
   const userObjectId = new ObjectId();
   const userIdStr = userObjectId.toHexString();
-  const initialStatus: UserStatus = 'Active'; 
+  // When admin creates, status is Active. When user registers, status is PendingApproval.
+  // This action is now also used by registerUserAction, so default status should reflect registration flow.
+  // For direct admin creation (e.g. seeding), status might be overridden.
+  // Let's assume this createUserAction is for *admin creating users* -> Active.
+  // registerUserAction handles its own status logic.
+  const initialStatus: UserStatus = (userData.role === 'Admin' || userData.role === 'Faculty') ? 'Active' : 'PendingApproval'; 
+
 
   const userDocumentToInsert = {
     _id: userObjectId,
@@ -184,7 +223,7 @@ export async function createUserAction(
   
   const createdUser: User = {
     id: userIdStr,
-    _id: userIdStr, // Ensure _id is string
+    _id: userIdStr, 
     email: userDocumentToInsert.email,
     name: userDocumentToInsert.name,
     role: userDocumentToInsert.role,
@@ -199,25 +238,26 @@ export async function createUserAction(
     const studentProfileIdStr = studentProfileObjectId.toHexString();
     const studentProfileDocumentToInsert = {
       _id: studentProfileObjectId,
-      id: studentProfileIdStr, // Store string id
+      id: studentProfileIdStr, 
       userId: createdUser.id,
-      admissionId: studentProfileDetails?.admissionId || `DEFAULT${Date.now().toString().slice(-4)}`,
+      // Admin assigns Admission ID upon approval, so it's initially blank or placeholder.
+      admissionId: studentProfileDetails?.admissionId || "", // Or "PENDING_ASSIGNMENT"
       fullName: studentProfileDetails?.fullName || createdUser.name,
-      dateOfBirth: studentProfileDetails?.dateOfBirth || 'N/A',
-      contactNumber: studentProfileDetails?.contactNumber || 'N/A',
-      address: studentProfileDetails?.address || 'N/A',
+      dateOfBirth: studentProfileDetails?.dateOfBirth || '', // Changed to empty string
+      contactNumber: studentProfileDetails?.contactNumber || '', // Changed to empty string
+      address: studentProfileDetails?.address || '', // Changed to empty string
       department: studentProfileDetails?.department || 'Not Specified',
       year: studentProfileDetails?.year || 1,
       section: studentProfileDetails?.section || 'N/A',
-      parentName: studentProfileDetails?.parentName || 'N/A',
-      parentContact: studentProfileDetails?.parentContact || 'N/A',
+      parentName: studentProfileDetails?.parentName || '', // Changed to empty string
+      parentContact: studentProfileDetails?.parentContact || '', // Changed to empty string
     };
     await studentProfilesCollection.insertOne(studentProfileDocumentToInsert as any);
 
-    const { _id, ...restOfProfileDoc } = studentProfileDocumentToInsert; // Exclude ObjectId _id
+    const { _id, ...restOfProfileDoc } = studentProfileDocumentToInsert; 
     createdStudentProfile = {
-      ...restOfProfileDoc, // restOfProfileDoc already has string id
-      _id: studentProfileIdStr, // Ensure _id is string
+      ...restOfProfileDoc, 
+      _id: studentProfileIdStr, 
     } as StudentProfile;
   }
 
