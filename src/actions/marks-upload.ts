@@ -1,3 +1,4 @@
+
 'use server';
 
 import * as XLSX from 'xlsx';
@@ -56,7 +57,7 @@ const headerMappingConfig: Record<keyof MarkRowSchemaType, string[]> = {
   'IAT-1(50)': ['IAT-1(50)', 'IAT 1(50)', 'IAT-1 (50)', 'IAT 1 (50)', 'INTERNAL ASSESSMENT TEST 1 (50)', 'INTERNAL ASSESSMENT TEST-1 (50)', 'IAT1(50)', 'IAT1'],
   'IAT-2(50)': ['IAT-2(50)', 'IAT 2(50)', 'IAT-2 (50)', 'IAT 2 (50)', 'INTERNAL ASSESSMENT TEST 2 (50)', 'INTERNAL ASSESSMENT TEST-2 (50)', 'IAT2(50)', 'IAT2'],
   'Assignment-1(20)': ['ASSIGNMENT-1(20)', 'ASSIGNMENT 1(20)', 'ASSIGNMENT-1 (20)', 'ASSIGNMENT 1 (20)', 'ASSIGNMENT MARKS 1 (20)', 'ASSIGN1(20)', 'ASSIGN1'],
-  'Assignment-2(20)': ['ASSIGNMENT-2(20)', 'ASSIGNMENT 2(20)', 'ASSIGNMENT-2 (20)', 'ASSIGNMENT 2 (20)', 'ASSIGNMENT MARKS 2 (20)', 'ASSIGN2(20)', 'ASSIGN2'],
+  'Assignment-2(20)': ['ASSIGNMENT-2(20)', 'ASSIGNMENT 2(20)', 'ASSIGNMENT-2 (20)', 'ASSIGNMENT 1 (20)', 'ASSIGNMENT MARKS 2 (20)', 'ASSIGN2(20)', 'ASSIGN2'],
 };
 
 // Helper function to get value from normalized row data based on possible header variations
@@ -100,7 +101,7 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
   const fetchedMarks = await marksCollection.find({ semester, subjectCode }).toArray();
   return fetchedMarks.map(doc => {
     const { _id, ...rest } = doc as any; 
-    return { ...rest, id: _id } as SubjectMark; 
+    return { ...rest, id: _id, _id: _id } as SubjectMark; 
   });
 }
 
@@ -125,32 +126,32 @@ export async function uploadMarks(input: UploadMarksInput): Promise<UploadMarksO
 
     for (const [index, row] of jsonData.entries()) {
         const normalizedRow: Record<string, any> = {};
-        let usnFromRow: string | null = null;
-
+        
         for (const key in row) {
-            if (row.hasOwnProperty(key) && row[key] !== null && String(row[key]).trim() !== "") { // Process only non-empty cell keys
+            if (row.hasOwnProperty(key) && row[key] !== null && String(row[key]).trim() !== "") { 
                  const trimmedUpperKey = key.trim().toUpperCase();
                  normalizedRow[trimmedUpperKey] = row[key];
-                 // Check if this key is a USN variant and has a value
-                 if (headerMappingConfig.USN.includes(trimmedUpperKey) && String(row[key]).trim() !== "") {
-                     usnFromRow = String(row[key]).trim().toUpperCase();
-                 }
             }
         }
         
-        // Skip row if it's effectively empty or USN is missing/empty after normalization
-        if (Object.keys(normalizedRow).length === 0 || !usnFromRow) {
+        const actualUsnValue = getValueFromNormalizedRow(normalizedRow, 'USN');
+        const usnForLogging = actualUsnValue && String(actualUsnValue).trim() !== "" ? String(actualUsnValue).trim().toUpperCase() : null;
+
+        // Skip row if it's effectively empty or actual USN is missing/empty after normalization
+        if (Object.keys(normalizedRow).length === 0 || !usnForLogging) {
             if (Object.keys(row).every(k => row[k] === null || String(row[k]).trim() === "")) {
-                 console.log(`Skipping completely empty row ${index + 2}`);
+                 console.log(`Skipping completely empty row ${index + 2} (all cells empty or null).`);
+            } else if (Object.keys(normalizedRow).length === 0 && Object.keys(row).length > 0){
+                console.log(`Skipping row ${index + 2} as it appears to be an empty data row (e.g. only headers with no data or unmapped headers). Raw: ${JSON.stringify(row)}`);
             } else {
-                errorDetails.push(`Row ${index + 2}: Skipped due to missing or empty USN. Ensure one of these headers is present and filled: ${headerMappingConfig.USN.join(', ')}.`);
-                console.log(`Skipping row ${index + 2} due to missing or empty USN. Raw data: ${JSON.stringify(row)}`);
+                errorDetails.push(`Row ${index + 2}: Skipped due to missing or empty USN. Ensure one of these headers is present and filled: ${headerMappingConfig.USN.join(', ')}. Detected USN: '${actualUsnValue === undefined ? 'undefined' : actualUsnValue}'`);
+                console.log(`Skipping row ${index + 2} due to missing or empty USN. Raw data: ${JSON.stringify(row)}, Normalized: ${JSON.stringify(normalizedRow)}, Actual USN from helper: ${actualUsnValue}`);
             }
             continue;
         }
 
         const mappedRowForValidation = {
-          USN: getValueFromNormalizedRow(normalizedRow, 'USN'),
+          USN: actualUsnValue, // Use the already fetched USN
           NAME: getValueFromNormalizedRow(normalizedRow, 'NAME'),
           'IAT-1(50)': getValueFromNormalizedRow(normalizedRow, 'IAT-1(50)'),
           'IAT-2(50)': getValueFromNormalizedRow(normalizedRow, 'IAT-2(50)'),
@@ -161,12 +162,12 @@ export async function uploadMarks(input: UploadMarksInput): Promise<UploadMarksO
         const rowValidation = MarkRowSchema.safeParse(mappedRowForValidation);
 
         if (!rowValidation.success) {
-            errorDetails.push(`Row ${index + 2} (USN: ${usnFromRow || 'unknown'}): Validation Error - ${JSON.stringify(rowValidation.error.flatten().fieldErrors)}. Ensure all required headers like NAME are present and marks are valid. Raw Mapped Data: ${JSON.stringify(mappedRowForValidation)}`);
+            errorDetails.push(`Row ${index + 2} (USN: ${usnForLogging || 'unknown'}): Validation Error - ${JSON.stringify(rowValidation.error.flatten().fieldErrors)}. Ensure all required headers like NAME are present and marks are valid. Raw Mapped Data: ${JSON.stringify(mappedRowForValidation)}`);
             continue;
         }
 
         const rowData = rowValidation.data;
-        const studentUSN = String(rowData.USN).toUpperCase(); // USN from validated data
+        const studentUSN = String(rowData.USN).toUpperCase(); 
         
         const studentProfile = await studentProfilesCollection.findOne({ admissionId: studentUSN });
 
@@ -182,6 +183,7 @@ export async function uploadMarks(input: UploadMarksInput): Promise<UploadMarksO
 
         const markEntry: SubjectMark = {
             id: `${studentId}-${subjectCode}-${semester}`,
+            _id: `${studentId}-${subjectCode}-${semester}`,
             studentId: studentId,
             usn: studentUSN,
             studentName: String(rowData.NAME),
@@ -236,3 +238,4 @@ export async function saveEditedMarks(marks: SubjectMark[], semester: number, se
         return { success: false, message: `Failed to save edited marks: ${error.message}` };
     }
 }
+
