@@ -27,6 +27,20 @@ async function getStudentProfilesCollection(): Promise<Collection<StudentProfile
 export async function loginUserAction(email: string, passwordPlainText: string, role: UserRole): Promise<User | { error: string } | null> {
   try {
     console.log(`Attempting login for email: ${email}, role: ${role}`);
+
+    // Hardcoded admin login bypass
+    if (email.toLowerCase() === 'admin@gmail.com' && passwordPlainText === 'password' && role === 'Admin') {
+      console.log('Hardcoded admin login successful.');
+      return {
+        id: 'hardcoded-admin-id', // Use a consistent but clearly mock ID
+        email: 'admin@gmail.com',
+        name: 'Admin User (Hardcoded)',
+        role: 'Admin',
+        avatar: `https://picsum.photos/seed/hardcoded-admin/100/100`,
+        status: 'Active',
+      } as User;
+    }
+    
     const usersCollection = await getUsersCollection();
     
     const userDocument = await usersCollection.findOne({ email: email.toLowerCase(), role: role });
@@ -47,8 +61,10 @@ export async function loginUserAction(email: string, passwordPlainText: string, 
       }
 
       console.log('User found and active:', userDocument.id, userDocument.role);
+      // Ensure the returned user object maps _id to id if it's from DB
+      const id = userDocument.id || userDocument._id?.toHexString();
       return { 
-        id: userDocument.id,
+        id: id,
         email: userDocument.email,
         name: userDocument.name,
         role: userDocument.role,
@@ -70,16 +86,34 @@ export async function loginUserAction(email: string, passwordPlainText: string, 
  */
 export async function fetchUserForSessionAction(userId: string): Promise<User | null> {
   try {
+    // Handle hardcoded admin session
+    if (userId === 'hardcoded-admin-id') {
+      return {
+        id: 'hardcoded-admin-id',
+        email: 'admin@gmail.com',
+        name: 'Admin User (Hardcoded)',
+        role: 'Admin',
+        avatar: `https://picsum.photos/seed/hardcoded-admin/100/100`,
+        status: 'Active',
+      } as User;
+    }
+
     const usersCollection = await getUsersCollection();
-    const userDocument = await usersCollection.findOne({ id: userId });
+    // Attempt to find by `id` first (our string representation), then by `_id` if `id` is not directly stored.
+    let userDocument = await usersCollection.findOne({ id: userId });
+    if (!userDocument && ObjectId.isValid(userId)) {
+        userDocument = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    }
+
 
     if (userDocument) {
       if (userDocument.status !== 'Active') {
         console.log(`Session user ${userId} is not active (status: ${userDocument.status}). Invalidating session.`);
         return null; // Effectively logs out user if their status changed
       }
+       const id = userDocument.id || userDocument._id?.toHexString();
       return { 
-        id: userDocument.id,
+        id: id,
         email: userDocument.email,
         name: userDocument.name,
         role: userDocument.role,
@@ -119,7 +153,7 @@ export async function registerUserAction(
   // In a production app, hash the password before storing it.
   const userDocumentToInsert = {
     _id: userObjectId,
-    id: userObjectId.toHexString(),
+    id: userObjectId.toHexString(), // Ensure 'id' field is the hex string of _id
     email: userData.email.toLowerCase(),
     name: userData.name,
     role: userData.role,
@@ -145,6 +179,7 @@ export async function registerUserAction(
     const studentProfileObjectId = new ObjectId();
     const studentProfileDocumentToInsert = {
       _id: studentProfileObjectId,
+      id: studentProfileObjectId.toHexString(), // Ensure 'id' field is the hex string of _id
       userId: createdUser.id,
       admissionId: `TEMP-${Date.now().toString().slice(-6)}`, // Temporary admission ID
       fullName: createdUser.name,
@@ -159,12 +194,12 @@ export async function registerUserAction(
     };
     await studentProfilesCollection.insertOne(studentProfileDocumentToInsert as any);
 
-    const { _id, ...restOfProfileDoc } = studentProfileDocumentToInsert;
+    // Use the 'id' field from the inserted document for the returned profile
     createdStudentProfile = {
-      ...restOfProfileDoc,
-      id: studentProfileObjectId.toHexString(),
+      ...studentProfileDocumentToInsert,
     } as StudentProfile;
   }
 
   return { user: createdUser, studentProfile: createdStudentProfile };
 }
+
