@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
 import type { SubjectMark, StudentProfile } from '@/types';
-import { Edit3, Save, BarChart, Info, Users, PlusCircle } from 'lucide-react';
+import { Edit3, Save, BarChart, Info, Users, PlusCircle, Trash2 } from 'lucide-react';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { fetchStudentProfilesForMarksEntry, saveMultipleStudentMarksAction } from '@/actions/marks-actions';
@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
+// This subject list should ideally be fetched from a database or a more centralized configuration
 const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
   "1": [{ code: "MA101", name: "Applied Mathematics I" }, { code: "PH102", name: "Engineering Physics" }],
   "2": [{ code: "MA201", name: "Applied Mathematics II" }, { code: "CH202", name: "Engineering Chemistry" }],
@@ -29,10 +30,11 @@ const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
   "8": [{ code: "CS801", name: "Project Work" }, { code: "CS802", name: "Professional Elective" }],
 };
 
-interface StudentWithMarksData extends StudentProfile {
-  marks: SubjectMark; // Marks for the current subject, ensure all fields are present
+// Interface for the data structure used in the form for each student
+interface StudentMarksEntryData {
+  profile: StudentProfile;
+  marks: SubjectMark;
 }
-
 
 export default function MarksEntryPage() {
   const { user } = useAuth();
@@ -42,21 +44,20 @@ export default function MarksEntryPage() {
   const [selectedSubject, setSelectedSubject] = useState<{ code: string, name: string } | null>(null);
   const [subjectsForSemester, setSubjectsForSemester] = useState<{ code: string, name: string }[]>([]);
   
-  const [studentsForEntry, setStudentsForEntry] = useState<StudentWithMarksData[]>([]);
+  const [studentsMarksEntries, setStudentsMarksEntries] = useState<StudentMarksEntryData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [initialLoadAttempted, setInitialLoadAttempted] = useState(false);
 
   useEffect(() => {
     setSubjectsForSemester(SUBJECTS_BY_SEMESTER[selectedSemester] || []);
-    setSelectedSubject(null); // Reset subject when semester changes
-    setStudentsForEntry([]);
+    setSelectedSubject(null);
+    setStudentsMarksEntries([]);
     setInitialLoadAttempted(false);
   }, [selectedSemester]);
 
   useEffect(() => {
-     // Reset students when section or subject changes before new load
-     setStudentsForEntry([]);
+     setStudentsMarksEntries([]);
      setInitialLoadAttempted(false);
   }, [selectedSection, selectedSubject])
 
@@ -64,7 +65,7 @@ export default function MarksEntryPage() {
   const loadStudentsAndMarks = useCallback(async () => {
     if (user && selectedSemester && selectedSection && selectedSubject) {
       setIsLoading(true);
-      setInitialLoadAttempted(true); // Mark that a load has been attempted for current selections
+      setInitialLoadAttempted(true);
       try {
         const data = await fetchStudentProfilesForMarksEntry(
           parseInt(selectedSemester),
@@ -73,11 +74,9 @@ export default function MarksEntryPage() {
           user.id
         );
         
-        // Transform data to ensure `marks` object is always present and fully initialized
-        const transformedData: StudentWithMarksData[] = data.map(item => {
-          // Ensure all required fields are present in the marks object
+        const transformedData: StudentMarksEntryData[] = data.map(item => {
           const baseMarks: SubjectMark = {
-            id: `${item.profile.userId}-${selectedSubject!.code}-${selectedSemester}`, // Use user ID for studentId
+            id: `${item.profile.userId}-${selectedSubject!.code}-${selectedSemester}`,
             _id: `${item.profile.userId}-${selectedSubject!.code}-${selectedSemester}`,
             studentId: item.profile.userId, 
             usn: item.profile.admissionId,
@@ -91,12 +90,12 @@ export default function MarksEntryPage() {
             assignment2_20: null,
           };
           return {
-            ...item.profile,
+            profile: item.profile,
             marks: item.marks ? { ...baseMarks, ...item.marks } : baseMarks,
           };
         });
         
-        setStudentsForEntry(transformedData);
+        setStudentsMarksEntries(transformedData);
 
         if (transformedData.length === 0) {
             toast({title: "No Students Found", description: "No active students found for this class/section. Ensure student accounts are 'Active' and have assigned USNs.", variant: "default"});
@@ -104,28 +103,25 @@ export default function MarksEntryPage() {
       } catch (error) {
         console.error("Error fetching students/marks:", error);
         toast({ title: "Error Loading Data", description: (error as Error).message || "Could not load student data. Please check selections or try again.", variant: "destructive" });
-        setStudentsForEntry([]);
+        setStudentsMarksEntries([]);
       } finally {
         setIsLoading(false);
       }
     } else {
-      // Clear data if selections are incomplete
-      setStudentsForEntry([]);
+      setStudentsMarksEntries([]);
       setInitialLoadAttempted(false);
     }
   }, [user, selectedSemester, selectedSection, selectedSubject, toast]);
 
-  // Trigger loadStudentsAndMarks when selections change
   useEffect(() => {
     if (selectedSemester && selectedSection && selectedSubject && user) {
         loadStudentsAndMarks();
     } else {
-        // Clear data if selections are not complete
-        setStudentsForEntry([]);
+        setStudentsMarksEntries([]);
         setInitialLoadAttempted(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSemester, selectedSection, selectedSubject, user]); // loadStudentsAndMarks is memoized and stable
+  }, [selectedSemester, selectedSection, selectedSubject, user]);
 
 
   const handleMarkChange = (studentUserId: string, field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50' | 'assignment1_20' | 'assignment2_20'>, value: string) => {
@@ -133,32 +129,99 @@ export default function MarksEntryPage() {
     const maxValues: Record<string, number> = { ia1_50: 50, ia2_50: 50, assignment1_20: 20, assignment2_20: 20 };
 
     if (numericValue !== null && (numericValue < 0 || (maxValues[field] !== undefined && numericValue > maxValues[field]))) {
-      toast({ title: "Invalid Mark", description: `Mark for ${field.replace('_', ' ')} must be between 0 and ${maxValues[field]}.`, variant: "destructive" });
-      // Potentially revert UI change here or prevent it
+      toast({ title: "Invalid Mark", description: `Mark for ${field.replace('_', ' ').replace('ia', 'IA').replace('assignment', 'Assignment')} must be between 0 and ${maxValues[field]}.`, variant: "destructive" });
       return; 
     }
 
-    setStudentsForEntry(prev =>
-      prev.map(student =>
-        student.userId === studentUserId
-          ? { ...student, marks: { ...student.marks, [field]: numericValue } }
-          : student
+    setStudentsMarksEntries(prev =>
+      prev.map(entry =>
+        entry.profile.userId === studentUserId
+          ? { ...entry, marks: { ...entry.marks, [field]: numericValue } }
+          : entry
       )
     );
   };
 
+  const handleAddStudentRow = () => {
+    if (!selectedSemester || !selectedSection || !selectedSubject) {
+      toast({ title: "Selection Required", description: "Please select semester, section, and subject first.", variant: "destructive"});
+      return;
+    }
+    const newStudentId = `temp-${Date.now()}`; // Temporary unique ID for new row
+    const newEntry: StudentMarksEntryData = {
+      profile: { 
+        // This is a placeholder profile. A real implementation might involve searching for an existing student.
+        // For now, it allows manual USN and name entry.
+        // Ensure all StudentProfile fields are technically present, even if blank or default.
+        id: newStudentId, 
+        _id: newStudentId,
+        userId: newStudentId, // This will be the key for this row
+        admissionId: '', 
+        fullName: '', 
+        dateOfBirth: '', 
+        contactNumber: '', 
+        address: '', 
+        department: 'Not Specified', 
+        year: Math.ceil(parseInt(selectedSemester)/2),
+        section: selectedSection, 
+        parentName: '', 
+        parentContact: '',
+      },
+      marks: {
+        id: `${newStudentId}-${selectedSubject.code}-${selectedSemester}`,
+        _id: `${newStudentId}-${selectedSubject.code}-${selectedSemester}`,
+        studentId: newStudentId,
+        usn: '',
+        studentName: '',
+        subjectCode: selectedSubject.code,
+        subjectName: selectedSubject.name,
+        semester: parseInt(selectedSemester),
+        ia1_50: null,
+        ia2_50: null,
+        assignment1_20: null,
+        assignment2_20: null,
+      }
+    };
+    setStudentsMarksEntries(prev => [...prev, newEntry]);
+  };
+
+  const handleRemoveStudentRow = (studentUserId: string) => {
+    setStudentsMarksEntries(prev => prev.filter(entry => entry.profile.userId !== studentUserId));
+  };
+
+  const handleStudentDetailChange = (studentUserId: string, field: 'admissionId' | 'fullName', value: string) => {
+     setStudentsMarksEntries(prev => 
+      prev.map(entry => {
+        if (entry.profile.userId === studentUserId) {
+          return {
+            ...entry,
+            profile: { ...entry.profile, [field]: value },
+            marks: { ...entry.marks, [field === 'admissionId' ? 'usn' : 'studentName']: value }
+          };
+        }
+        return entry;
+      })
+    );
+  };
+
   const handleSaveChanges = async () => {
-    if (!user || !selectedSemester || !selectedSection || !selectedSubject || studentsForEntry.length === 0) {
-      toast({ title: "Cannot Save", description: "No data to save or selection incomplete. Please select semester, section, subject and ensure students are loaded.", variant: "destructive" });
+    if (!user || !selectedSemester || !selectedSection || !selectedSubject || studentsMarksEntries.length === 0) {
+      toast({ title: "Cannot Save", description: "No data to save or selection incomplete.", variant: "destructive" });
       return;
     }
 
     setIsSaving(true);
-    // Prepare marks for saving: ensure all required fields from StudentProfile are included in SubjectMark
-    const marksToSave: SubjectMark[] = studentsForEntry.map(student => student.marks);
+    // Filter out rows where USN or Student Name is empty for newly added rows
+    // And validate existing student rows
+    const marksToSave = studentsMarksEntries.filter(entry => {
+      if (entry.profile.userId.startsWith('temp-')) { // New row
+        return entry.marks.usn.trim() !== '' && entry.marks.studentName.trim() !== '';
+      }
+      return true; // Existing student, assume valid for now
+    }).map(entry => entry.marks);
 
     if (marksToSave.length === 0) {
-        toast({ title: "No Marks to Save", description: "No marks have been entered or changed for any student.", variant: "default" });
+        toast({ title: "No Valid Marks to Save", description: "Please ensure USN and Name are filled for all manually added students.", variant: "default" });
         setIsSaving(false);
         return;
     }
@@ -170,6 +233,10 @@ export default function MarksEntryPage() {
         loadStudentsAndMarks(); // Refresh data from DB
       } else {
         toast({ title: "Save Failed", description: result.message || "Could not save marks.", variant: "destructive" });
+         if (result.errors) {
+            console.error("Save errors:", result.errors);
+            // Potentially display more detailed errors
+        }
       }
     } catch (error: any) {
       console.error("Error saving marks:", error);
@@ -180,19 +247,18 @@ export default function MarksEntryPage() {
   };
   
   const calculateSummary = useMemo(() => {
-    const marksList = studentsForEntry.map(s => s.marks);
+    const marksList = studentsMarksEntries.map(s => s.marks);
     if (marksList.length === 0) return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
     
     const validForCalc = marksList.filter(m => m.ia1_50 !== null || m.ia2_50 !== null || m.assignment1_20 !== null || m.assignment2_20 !== null);
-    const totalStudentsInList = studentsForEntry.length; // Count of all students fetched for the class
+    const totalStudentsInList = studentsMarksEntries.length;
     
-    if (validForCalc.length === 0 && totalStudentsInList > 0) { // Students exist, but no marks entered yet
+    if (validForCalc.length === 0 && totalStudentsInList > 0) {
         return { count: totalStudentsInList, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
     }
-    if (totalStudentsInList === 0) { // No students fetched
+    if (totalStudentsInList === 0) {
         return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
     }
-
 
     const sum = (field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50' | 'assignment1_20' | 'assignment2_20'>) => 
         validForCalc.reduce((acc, m) => acc + (typeof m[field] === 'number' ? m[field] as number : 0), 0);
@@ -207,8 +273,7 @@ export default function MarksEntryPage() {
         avgAssign1: numValid('assignment1_20') > 0 ? (sum('assignment1_20') / numValid('assignment1_20')).toFixed(2) : 'N/A',
         avgAssign2: numValid('assignment2_20') > 0 ? (sum('assignment2_20') / numValid('assignment2_20')).toFixed(2) : 'N/A',
     };
-  }, [studentsForEntry]);
-
+  }, [studentsMarksEntries]);
 
   if (!user || user.role !== 'Faculty') {
     return (
@@ -226,11 +291,10 @@ export default function MarksEntryPage() {
     <div className="space-y-6">
       <h1 className="text-3xl font-bold flex items-center"><Edit3 className="mr-2 h-8 w-8 text-primary" /> Marks Entry</h1>
 
-      {/* Step 1: Selection */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Select Class and Subject</CardTitle>
-          <CardDescription>Choose the semester, section, and subject to enter or view marks. Students must be 'Active' and have an assigned USN to appear.</CardDescription>
+          <CardDescription>Choose the semester, section, and subject to enter or view marks. Students must be 'Active' and have an assigned USN to appear, or you can add them manually.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
@@ -271,12 +335,18 @@ export default function MarksEntryPage() {
         </CardContent>
       </Card>
 
-      {/* Step 2: Display & Edit Marks Table */}
        {selectionMade && (
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>Enter Marks: {selectedSubject?.name} ({selectedSubject?.code}) - Sem {selectedSemester}, Sec {selectedSection}</CardTitle>
-            <CardDescription>Input marks for each student. Click 'Save All Marks' when done. Ensure USNs are correct as they link marks to students.</CardDescription>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle>Enter Marks: {selectedSubject?.name} ({selectedSubject?.code}) - Sem {selectedSemester}, Sec {selectedSection}</CardTitle>
+                <CardDescription>Input marks for each student. Click 'Save All Marks' when done. Ensure USNs and Names are correct.</CardDescription>
+              </div>
+              <Button onClick={handleAddStudentRow} variant="outline" size="sm" disabled={isSaving || isLoading}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add Student Row
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -284,31 +354,50 @@ export default function MarksEntryPage() {
                     <p className="text-center text-muted-foreground py-4">Loading student data...</p>
                     {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-md" />)}
                  </div>
-            ) : studentsForEntry.length > 0 ? (
+            ) : studentsMarksEntries.length > 0 ? (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[120px] sticky left-0 bg-card z-10">USN</TableHead>
-                      <TableHead className="sticky left-[120px] bg-card z-10">Student Name</TableHead>
+                      <TableHead className="w-[150px] sticky left-0 bg-card z-10">USN</TableHead>
+                      <TableHead className="w-[200px] sticky left-[150px] bg-card z-10">Student Name</TableHead>
                       <TableHead className="text-center w-28">IA 1 (50)</TableHead>
                       <TableHead className="text-center w-28">IA 2 (50)</TableHead>
                       <TableHead className="text-center w-32">Assign 1 (20)</TableHead>
                       <TableHead className="text-center w-32">Assign 2 (20)</TableHead>
+                      <TableHead className="text-center w-20">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {studentsForEntry.map((student) => (
-                      <TableRow key={student.userId}>
-                        <TableCell className="font-mono text-xs sticky left-0 bg-card z-10">{student.admissionId}</TableCell>
-                        <TableCell className="font-medium sticky left-[120px] bg-card z-10">{student.fullName}</TableCell>
+                    {studentsMarksEntries.map((entry) => (
+                      <TableRow key={entry.profile.userId}>
+                        <TableCell className="font-mono text-xs sticky left-0 bg-card z-10 px-1 py-1">
+                           <Input
+                                type="text"
+                                className="w-full text-xs bg-background h-9"
+                                value={entry.marks.usn}
+                                onChange={(e) => handleStudentDetailChange(entry.profile.userId, 'admissionId', e.target.value.toUpperCase())}
+                                disabled={isSaving || !entry.profile.userId.startsWith('temp-')} // Disable if not a new temp row
+                                placeholder="Enter USN"
+                            />
+                        </TableCell>
+                        <TableCell className="font-medium sticky left-[150px] bg-card z-10 px-1 py-1">
+                           <Input
+                                type="text"
+                                className="w-full text-sm bg-background h-9"
+                                value={entry.marks.studentName}
+                                onChange={(e) => handleStudentDetailChange(entry.profile.userId, 'fullName', e.target.value)}
+                                disabled={isSaving || !entry.profile.userId.startsWith('temp-')}
+                                placeholder="Enter Name"
+                            />
+                        </TableCell>
                         {(['ia1_50', 'ia2_50', 'assignment1_20', 'assignment2_20'] as const).map(field => (
                           <TableCell key={field} className="px-1 py-1">
                             <Input
                               type="number"
                               className="w-24 text-center mx-auto bg-background h-9 text-sm"
-                              value={student.marks?.[field] === null || student.marks?.[field] === undefined ? '' : String(student.marks?.[field])}
-                              onChange={(e) => handleMarkChange(student.userId, field, e.target.value)}
+                              value={entry.marks?.[field] === null || entry.marks?.[field] === undefined ? '' : String(entry.marks?.[field])}
+                              onChange={(e) => handleMarkChange(entry.profile.userId, field, e.target.value)}
                               min="0"
                               max={field.includes('50') ? "50" : "20"}
                               disabled={isSaving}
@@ -316,6 +405,13 @@ export default function MarksEntryPage() {
                             />
                           </TableCell>
                         ))}
+                        <TableCell className="text-center px-1 py-1">
+                          {entry.profile.userId.startsWith('temp-') && (
+                            <Button variant="ghost" size="icon" onClick={() => handleRemoveStudentRow(entry.profile.userId)} disabled={isSaving}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -327,11 +423,11 @@ export default function MarksEntryPage() {
                 </div>
               </div>
             ) : (
-                 initialLoadAttempted && ( // Show message only if load was attempted for the current selection
+                 initialLoadAttempted && ( 
                     <div className="text-center py-8 text-muted-foreground">
                         <Users className="mx-auto h-12 w-12 mb-4" />
-                        <p className="text-lg">No active students found for this selection.</p>
-                        <p>Please ensure students are registered, approved by admin with a USN, and match the selected semester/section.</p>
+                        <p className="text-lg">No active students loaded for this selection.</p>
+                        <p>You can add students manually using the button above or check if students are approved with USNs.</p>
                     </div>
                  )
             )}
@@ -339,8 +435,7 @@ export default function MarksEntryPage() {
         </Card>
       )}
 
-      {/* Step 3: Performance Summary */}
-      {selectionMade && !isLoading && studentsForEntry.length > 0 && (
+      {selectionMade && !isLoading && studentsMarksEntries.length > 0 && (
             <Card className="shadow-lg">
                 <CardHeader>
                     <CardTitle className="flex items-center"><BarChart className="mr-2 h-5 w-5 text-primary" /> Performance Summary</CardTitle>
@@ -373,7 +468,6 @@ export default function MarksEntryPage() {
             </Card>
        )}
 
-      {/* Initial state message or if selections are cleared */}
        {!selectionMade && !isLoading && (
          <Alert className="mt-6 bg-accent/20 border-accent text-accent-foreground">
              <Info className="h-5 w-5 text-accent" />
@@ -384,7 +478,3 @@ export default function MarksEntryPage() {
     </div>
   );
 }
-
-```
-  </change>
-  <

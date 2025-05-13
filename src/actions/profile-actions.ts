@@ -1,3 +1,4 @@
+
 'use server';
 
 import { connectToDatabase } from '@/lib/mongodb';
@@ -313,3 +314,42 @@ export async function createUserAction(
 
   return { user: createdUser, studentProfile: createdStudentProfile };
 }
+
+// The following is client-side code and should not be in a 'use server' file.
+// It was moved to src/app/(app)/admin/users/page.tsx
+/*
+export async function handleConfirmApprovalWithUsnClient(
+    selectedUserForApproval: User | null,
+    admissionIdInput: string,
+    toast: Function, // Consider a more specific type for toast if available
+    loadUsers: (tab: any) => void, // Consider a more specific type for loadUsers and tab
+    activeTab: any, // Consider a more specific type
+    setIsLoading: (loading: boolean) => void,
+    setIsUsnModalOpen: (open: boolean) => void,
+    setSelectedUserForApprovalClient: (user: User | null) => void
+) {
+    if (!selectedUserForApproval || !admissionIdInput.trim()) {
+        toast({ title: "Error", description: "Admission ID (USN) is required.", variant: "destructive" });
+        return;
+    }
+    setIsLoading(true);
+    setIsUsnModalOpen(false);
+    try {
+        const success = await updateUserStatusAction(selectedUserForApproval.id, 'Active', admissionIdInput.trim().toUpperCase());
+        if (success) {
+            toast({ title: "Student Approved", description: `${selectedUserForApproval.name}'s account is now Active with USN: ${admissionIdInput.trim().toUpperCase()}.`, className: "bg-success text-success-foreground" });
+            loadUsers(activeTab);
+        } else {
+            toast({ title: "Approval Failed", description: `Could not approve ${selectedUserForApproval.name}. The user status might not have changed, or the USN update failed.`, variant: "destructive" });
+        }
+    } catch (error) {
+        console.error("Error approving student:", error);
+        toast({ title: "Error", description: `Failed to approve student: ${(error as Error).message}`, variant: "destructive" });
+    } finally {
+        setSelectedUserForApprovalClient(null);
+        // setAdmissionIdInput(""); // This state is local to the component
+        setIsLoading(false);
+    }
+}
+*/
+
