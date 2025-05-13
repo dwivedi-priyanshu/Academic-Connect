@@ -33,7 +33,7 @@ export async function fetchStudentProfilesForMarksEntry(
   semester: number,
   section: string,
   subjectCode: string,
-  facultyId: string 
+  facultyId: string
 ): Promise<Array<{ profile: StudentProfile; marks?: SubjectMark }>> {
   try {
     console.log(`Fetching student profiles and marks for Sem: ${semester}, Sec: ${section}, Sub: ${subjectCode}, Faculty: ${facultyId}`);
@@ -41,12 +41,12 @@ export async function fetchStudentProfilesForMarksEntry(
     const marksCollection = await getMarksCollection();
 
     const year = Math.ceil(semester / 2);
-    
+
     // Fetch active student profiles for the given year and section
     // It's crucial that StudentProfile.userId corresponds to User.id, which is a string (ObjectId.toHexString())
     // And StudentProfile.id is its own _id.toHexString()
-    const studentProfilesCursor = studentProfilesCollection.find({ 
-        year, 
+    const studentProfilesCursor = studentProfilesCollection.find({
+        year,
         section,
         // Add a check for student.user.status === 'Active' by joining with users collection or ensuring profiles are only for active users
         // For now, assuming StudentProfile implies an associated active user if they are in a class section.
@@ -74,7 +74,7 @@ export async function fetchStudentProfilesForMarksEntry(
     };
     const existingMarksCursor = marksCollection.find(marksQuery);
     const existingMarksArray = await existingMarksCursor.toArray();
-    
+
     const marksMap = new Map<string, SubjectMark>();
     existingMarksArray.forEach(markDoc => {
       // Ensure _id is stringified, which it should be as it's the composite key.
@@ -138,12 +138,12 @@ export async function saveMultipleStudentMarksAction(
       if (!validation.success) {
         console.warn("Invalid mark entry skipped:", entry, validation.error.flatten());
         validationErrors.push({ usn: entry.usn || 'Unknown USN', errors: validation.error.flatten() });
-        continue; 
+        continue;
       }
-      
+
       const validEntry = validation.data;
       const markId = `${validEntry.studentId}-${validEntry.subjectCode}-${validEntry.semester}`;
-      
+
       // Construct the document for MongoDB, ensuring all assessment fields are explicitly present or null
       const markDocument: SubjectMark = {
         id: markId,
@@ -182,7 +182,7 @@ export async function saveMultipleStudentMarksAction(
 
     const successCount = result.upsertedCount + result.modifiedCount;
     console.log(`Bulk write result: Upserted ${result.upsertedCount}, Modified ${result.modifiedCount}, Matched ${result.matchedCount}`);
-    
+
     let message = `Successfully saved/updated ${successCount} of ${operations.length} student marks records.`;
     if (validationErrors.length > 0) {
         message += ` ${validationErrors.length} entries had validation issues and were skipped.`;
@@ -238,18 +238,13 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
     semester: semester,
     subjectCode: subjectCode,
   };
-  
+
   const fetchedMarks = await marksCollection.find(marksQuery).toArray();
-  
+
   return fetchedMarks.map(doc => {
     // _id is already a string (studentId-subjectCode-semester) and is also stored as 'id'.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { _id, ...rest } = doc; 
+    const { _id, ...rest } = doc;
     return { ...rest, id: String(doc._id), _id: String(doc._id) } as SubjectMark;
   });
 }
-
-```
-  </change>
-  <change>
-    <file>src
