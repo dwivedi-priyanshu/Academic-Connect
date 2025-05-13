@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from '@/components/ui/button';
@@ -214,13 +215,18 @@ export default function MarksEntryPage() {
     // And validate existing student rows
     const marksToSave = studentsMarksEntries.filter(entry => {
       if (entry.profile.userId.startsWith('temp-')) { // New row
-        return entry.marks.usn.trim() !== '' && entry.marks.studentName.trim() !== '';
+        if (entry.marks.usn.trim() === '' || entry.marks.studentName.trim() === ''){
+            toast({title: "Validation Error", description: `USN and Name are required for new student: ${entry.marks.studentName || entry.marks.usn || 'Unnamed Row'}. Row skipped.`, variant: "destructive"})
+            return false;
+        }
+        // Further validation for new student entry could be if their USN already exists in the system
+        // This would require querying DB for existing USNs or student profiles.
       }
-      return true; // Existing student, assume valid for now
+      return true; 
     }).map(entry => entry.marks);
 
     if (marksToSave.length === 0) {
-        toast({ title: "No Valid Marks to Save", description: "Please ensure USN and Name are filled for all manually added students.", variant: "default" });
+        toast({ title: "No Valid Marks to Save", description: "Please ensure USN and Name are filled for all manually added students, or no changes were made.", variant: "default" });
         setIsSaving(false);
         return;
     }
@@ -370,7 +376,7 @@ export default function MarksEntryPage() {
                   <TableBody>
                     {studentsMarksEntries.map((entry) => (
                       <TableRow key={entry.profile.userId}>
-                        <TableCell className="font-mono text-xs sticky left-0 bg-card z-10 px-1 py-1">
+                        <TableCell className="font-mono text-xs sticky left-0 bg-card z-10 px-1 py-1 w-[180px]">
                            <Input
                                 type="text"
                                 className="w-full text-xs bg-background h-9"
@@ -380,7 +386,7 @@ export default function MarksEntryPage() {
                                 placeholder="Enter USN"
                             />
                         </TableCell>
-                        <TableCell className="font-medium sticky left-[180px] bg-card z-10 px-1 py-1">
+                        <TableCell className="font-medium sticky left-[180px] bg-card z-10 px-1 py-1 w-[200px]">
                            <Input
                                 type="text"
                                 className="w-full text-sm bg-background h-9"
@@ -477,3 +483,4 @@ export default function MarksEntryPage() {
     </div>
   );
 }
+
