@@ -1,10 +1,14 @@
 import { MongoClient, Db } from 'mongodb';
 
-const MONGODB_URI = process.env.MONGODB_URI;
+// It is STRONGLY recommended to move this connection string to an environment variable (e.g., .env.local)
+// and access it via process.env.MONGODB_URI.
+// Hardcoding sensitive information like this is a security risk.
+const MONGODB_URI = "mongodb+srv://priyanshudwivedi435:Priy1979@str.m1hahwj.mongodb.net/?retryWrites=true&w=majority";
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'academic_connect'; // Default DB name if not set
 
 if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+  // This check remains in case the hardcoded string is removed later in favor of environment variables.
+  throw new Error('Please define the MONGODB_URI environment variable or provide it directly in the code (not recommended for production).');
 }
 
 let client: MongoClient | null = null;

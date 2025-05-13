@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -6,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, Bell } from 'lucide-react';
 import Link from 'next/link';
-import Image from 'next/image';
+// Removed: import Image from 'next/image';
 
 // Placeholder components for role-specific dashboards
 const StudentDashboard = () => (
@@ -116,14 +117,7 @@ const AdminDashboard = () => (
       </CardHeader>
       <CardContent>
         <p className="text-muted-foreground">System statistics and monitoring tools would appear here.</p>
-        <Image 
-          src="https://picsum.photos/seed/admin-chart/600/300" 
-          alt="Admin Chart Placeholder" 
-          width={600} 
-          height={300} 
-          className="mt-4 rounded-lg shadow-md"
-          data-ai-hint="data analytics" 
-        />
+        {/* Image removed from here */}
       </CardContent>
     </Card>
   </div>
