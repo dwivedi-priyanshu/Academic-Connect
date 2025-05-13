@@ -2,19 +2,20 @@
 export type UserRole = 'Student' | 'Faculty' | 'Admin';
 
 export interface User {
-  id: string; // Corresponds to mock user IDs, and potentially primary key in 'users' collection if not using Mongo _id.
-  _id?: string; // Optional: if fetched from MongoDB and we want to keep ObjectId string
+  _id?: any; // MongoDB ObjectId string when fetched from DB
+  id: string;  // Primary identifier used throughout the app. For Mongo, this will be _id.toHexString().
   email: string;
   name: string;
   role: UserRole;
   avatar?: string; 
+  // password?: string; // In a real app, this would be a hashed password, not stored on client model
 }
 
 export interface StudentProfile {
-  _id?: string; // MongoDB ObjectId string
-  id?: string; // This field will be mapped from _id for client-side use
+  _id?: any; // MongoDB ObjectId string
+  id: string; // This field will be mapped from _id for client-side use
   userId: string; // Links to User.id
-  admissionId: string; 
+  admissionId: string; // USN
   fullName: string;
   dateOfBirth: string; 
   contactNumber: string;
@@ -27,7 +28,7 @@ export interface StudentProfile {
 }
 
 export interface SubjectMark {
-  _id?: string; // MongoDB ObjectId string (if we don't use composite key as _id) or the composite string key itself
+  _id?: string; // In MongoDB, this will be the composite 'id' string.
   id: string; // Composite key: studentId-subjectCode-semester. This WILL be used as _id in MongoDB for marks.
   studentId: string; 
   usn: string; 
@@ -75,35 +76,34 @@ export interface MoocCourse {
   remarks?: string;
 }
 
-// Sample data for demonstration (used by AuthContext for mock login)
-export const MOCK_USER_STUDENT: User = {
-  id: 'student123', // This ID should exist in 'users' collection and link to a 'student_profiles' entry
+// The following MOCK_USER constants are for reference or seeding the database.
+// They are NOT used for active authentication by AuthContext anymore.
+export const MOCK_USER_STUDENT_DATA: Omit<User, 'id' | '_id'> = {
   email: 'student@example.com',
   name: 'John Doe',
   role: 'Student',
   avatar: 'https://picsum.photos/seed/student123/100/100',
 };
 
-export const MOCK_USER_FACULTY: User = {
-  id: 'faculty456', // This ID should exist in 'users' collection
+export const MOCK_USER_FACULTY_DATA: Omit<User, 'id' | '_id'> = {
   email: 'faculty@example.com',
   name: 'Dr. Jane Smith',
   role: 'Faculty',
   avatar: 'https://picsum.photos/seed/faculty456/100/100',
 };
 
-export const MOCK_USER_ADMIN: User = {
-  id: 'admin789', // This ID should exist in 'users' collection
+export const MOCK_USER_ADMIN_DATA: Omit<User, 'id' | '_id'> = {
   email: 'admin@example.com',
   name: 'Admin User',
   role: 'Admin',
   avatar: 'https://picsum.photos/seed/admin789/100/100',
 };
 
-// MOCK_STUDENT_PROFILES_WITH_USN and USN_TO_USERID_MAP are no longer primary sources of truth.
-// Student data for marks upload will be fetched from the student_profiles collection in MongoDB.
-// It's assumed these profiles will be seeded/created in the DB.
-// For the application to function correctly, the `users` collection should contain entries for
-// MOCK_USER_STUDENT, MOCK_USER_FACULTY, MOCK_USER_ADMIN.
-// And `student_profiles` collection should contain profiles for students, especially those whose marks
-// will be uploaded, linking via `userId` to the `users` collection and having correct `admissionId` (USN).
+// It's assumed the 'users' collection in MongoDB would contain user documents.
+// Example structure for a user document in MongoDB (using 'id' as a unique string, could also be email):
+// { id: "student123", email: "student@example.com", name: "John Doe", role: "Student", avatar: "...", hashedPassword: "..." }
+// { id: "faculty456", email: "faculty@example.com", name: "Dr. Jane Smith", role: "Faculty", avatar: "...", hashedPassword: "..." }
+// { id: "admin789", email: "admin@example.com", name: "Admin User", role: "Admin", avatar: "...", hashedPassword: "..." }
+
+// Student profiles in `student_profiles` collection would link via `userId`.
+// Example: { userId: "student123", admissionId: "1USN001", fullName: "John Doe", ... }

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from '@/components/ui/button';
@@ -10,33 +11,42 @@ import type { UserRole } from '@/types';
 import { GraduationCap, LogIn } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(''); // Password currently not used by backend login action
   const [selectedRole, setSelectedRole] = useState<UserRole>('Student');
-  const { login, isAuthenticated, isLoading } = useAuth();
+  const { login, isAuthenticated, isLoading: authIsLoading } = useAuth(); // Renamed isLoading to authIsLoading
   const router = useRouter();
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
+    if (!authIsLoading && isAuthenticated) {
       router.push('/dashboard');
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, authIsLoading, router]);
 
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, you would validate credentials here
-    if (email && password && selectedRole) {
-      login(selectedRole);
-    } else {
-      // Handle error: show toast or message
-      console.error("Please fill in all fields and select a role.");
+    if (!email || !selectedRole) { // Password validation removed as it's not used by current backend
+      toast({ title: "Error", description: "Please fill in email and select a role.", variant: "destructive" });
+      return;
     }
+    setIsSubmitting(true);
+    const success = await login(email, selectedRole);
+    setIsSubmitting(false);
+
+    if (!success) {
+      toast({ title: "Login Failed", description: "Invalid credentials or user not found for the selected role. Please try again.", variant: "destructive" });
+    }
+    // Successful login is handled by AuthContext redirect
   };
 
-  if (isLoading || (!isLoading && isAuthenticated)) {
+  if (authIsLoading || (!authIsLoading && isAuthenticated)) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-24">
         <GraduationCap className="h-16 w-16 text-primary animate-pulse" />
@@ -67,6 +77,7 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="bg-background"
+                disabled={isSubmitting}
               />
             </div>
             <div className="space-y-2">
@@ -75,10 +86,11 @@ export default function LoginPage() {
                 id="password"
                 type="password"
                 value={password}
-                placeholder="••••••••"
+                placeholder="••••••••" // Password field kept for UI, but not sent/checked
                 onChange={(e) => setPassword(e.target.value)}
-                required
+                required 
                 className="bg-background"
+                disabled={isSubmitting}
               />
             </div>
             <div className="space-y-2">
@@ -87,32 +99,34 @@ export default function LoginPage() {
                 defaultValue="Student"
                 onValueChange={(value: UserRole) => setSelectedRole(value)}
                 className="flex space-x-4 pt-1"
+                disabled={isSubmitting}
               >
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="Student" id="role-student" />
+                  <RadioGroupItem value="Student" id="role-student" disabled={isSubmitting} />
                   <Label htmlFor="role-student">Student</Label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="Faculty" id="role-faculty" />
+                  <RadioGroupItem value="Faculty" id="role-faculty" disabled={isSubmitting} />
                   <Label htmlFor="role-faculty">Faculty</Label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="Admin" id="role-admin" />
+                  <RadioGroupItem value="Admin" id="role-admin" disabled={isSubmitting} />
                   <Label htmlFor="role-admin">Admin</Label>
                 </div>
               </RadioGroup>
             </div>
-            <Button type="submit" className="w-full">
-              <LogIn className="mr-2 h-4 w-4" /> Login
+            <Button type="submit" className="w-full" disabled={isSubmitting || authIsLoading}>
+              {isSubmitting ? 'Logging in...' : <><LogIn className="mr-2 h-4 w-4" /> Login</>}
             </Button>
           </form>
         </CardContent>
         <CardFooter className="text-center text-sm text-muted-foreground">
           <p>
-            This is a mock login. No actual authentication is performed.
+            Login with your registered email and role.
           </p>
         </CardFooter>
       </Card>
     </div>
   );
 }
+

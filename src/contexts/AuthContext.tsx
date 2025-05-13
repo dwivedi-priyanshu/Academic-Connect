@@ -1,14 +1,15 @@
+
 'use client';
 
 import type { User, UserRole } from '@/types';
 import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
-import { MOCK_USER_STUDENT, MOCK_USER_FACULTY, MOCK_USER_ADMIN } from '@/types';
 import { useRouter, usePathname } from 'next/navigation';
+import { loginUserAction, fetchUserForSessionAction } from '@/actions/auth-actions'; // Import new actions
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (role: UserRole) => void;
+  login: (email: string, role: UserRole) => Promise<boolean>; // Changed signature
   logout: () => void;
   isLoading: boolean;
 }
@@ -22,12 +23,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname();
 
   useEffect(() => {
-    // Simulate checking auth status from localStorage or API
-    const storedUserRole = localStorage.getItem('academic-connect-role') as UserRole | null;
-    if (storedUserRole) {
-      handleLogin(storedUserRole, false); // Don't redirect if already on a page
-    }
-    setIsLoading(false);
+    const restoreSession = async () => {
+      setIsLoading(true);
+      const storedUserId = localStorage.getItem('academic-connect-userId');
+      // const storedUserRole = localStorage.getItem('academic-connect-role') as UserRole | null; // Role not strictly needed if fetching by ID
+
+      if (storedUserId) {
+        try {
+          const sessionUser = await fetchUserForSessionAction(storedUserId);
+          if (sessionUser) {
+            setUser(sessionUser);
+          } else {
+            // Invalid session data, clear localStorage
+            localStorage.removeItem('academic-connect-userId');
+            localStorage.removeItem('academic-connect-role');
+          }
+        } catch (error) {
+          console.error("Session restoration failed:", error);
+          localStorage.removeItem('academic-connect-userId');
+          localStorage.removeItem('academic-connect-role');
+        }
+      }
+      setIsLoading(false);
+    };
+    restoreSession();
   }, []);
 
   useEffect(() => {
@@ -40,21 +59,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [user, isLoading, pathname, router]);
 
 
-  const handleLogin = (role: UserRole, shouldRedirect: boolean = true) => {
-    let mockUser: User;
-    if (role === 'Student') mockUser = MOCK_USER_STUDENT;
-    else if (role === 'Faculty') mockUser = MOCK_USER_FACULTY;
-    else mockUser = MOCK_USER_ADMIN;
-    
-    setUser(mockUser);
-    localStorage.setItem('academic-connect-role', role);
-    if (shouldRedirect) {
-      router.push('/dashboard');
+  const handleLogin = async (email: string, role: UserRole): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      const loggedInUser = await loginUserAction(email, role);
+      if (loggedInUser) {
+        setUser(loggedInUser);
+        localStorage.setItem('academic-connect-userId', loggedInUser.id);
+        localStorage.setItem('academic-connect-role', loggedInUser.role); // Still useful for quick role checks if needed
+        router.push('/dashboard');
+        setIsLoading(false);
+        return true;
+      } else {
+        setUser(null); // Ensure user is null on failed login
+        setIsLoading(false);
+        return false;
+      }
+    } catch (error) {
+      console.error("Login error in AuthContext:", error);
+      setUser(null);
+      setIsLoading(false);
+      return false;
     }
   };
 
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem('academic-connect-userId');
     localStorage.removeItem('academic-connect-role');
     router.push('/login');
   };
@@ -73,3 +104,4 @@ export const useAuth = () => {
   }
   return context;
 };
+
