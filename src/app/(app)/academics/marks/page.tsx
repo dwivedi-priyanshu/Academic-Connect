@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,78 +9,37 @@ import { ClipboardList, Percent } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from '@/components/ui/skeleton';
-import { fetchMarksFromStorage } from '@/actions/marks-upload'; // Import the server action
+import { fetchStudentMarksAction } from '@/actions/student-data-actions'; // Import the server action
 import { useToast } from "@/hooks/use-toast";
-
-// MOCK: Function to fetch marks for a specific student using the server action
-// This is now a client-side function that CALLS the server action.
-const fetchStudentMarksData = async (studentId: string, semester: number): Promise<SubjectMark[]> => {
-  console.log(`Fetching marks data for student ${studentId}, semester ${semester} using server action`);
-  await new Promise(resolve => setTimeout(resolve, 700)); // Simulate API delay
-
-  // PROBLEM: fetchMarksFromStorage needs section and subjectCode, which we don't know easily here.
-  // The current server action `fetchMarksFromStorage` is designed for faculty view (sem, section, subject).
-  // We need a *different* server action or backend endpoint to fetch *all* marks for a given student across all subjects/semesters.
-
-  // TEMPORARY WORKAROUND for MOCK:
-  // Since we can't easily call the existing server action correctly from the student's perspective,
-  // and the server action itself can't use localStorage, we will simulate fetching *all* potential marks
-  // by iterating through localStorage *on the client* where it's available.
-  // This is NOT how a real application should work but allows the demo to function.
-  // A real app needs a dedicated backend API endpoint: GET /api/students/{studentId}/marks
-  console.warn("Using temporary client-side localStorage access for student marks - needs proper backend API.");
-  const allMarks: SubjectMark[] = [];
-  if (typeof window !== 'undefined') { // Ensure localStorage is available
-      for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith('marks-')) { // Look for keys used by faculty upload/save
-              try {
-                  const data = JSON.parse(localStorage.getItem(key) || '[]');
-                  if (Array.isArray(data)) {
-                      // Filter marks for the current student from section/subject storage
-                      allMarks.push(...data.filter(mark => mark.studentId === studentId));
-                  } else if (typeof data === 'object' && data !== null && data.studentId === studentId) {
-                      // Handle cases where data might be stored per student per subject (less likely with current save)
-                      allMarks.push(data);
-                  }
-              } catch (e) {
-                  console.error(`Error parsing localStorage key ${key}:`, e);
-              }
-          }
-      }
-  }
-   // Remove duplicates based on unique ID and filter by the selected semester
-   const uniqueMarks = Array.from(new Map(allMarks.map(mark => [mark.id, mark])).values());
-   console.log(`Found ${uniqueMarks.length} unique mark entries for student ${studentId} via localStorage workaround.`);
-   return uniqueMarks.filter(mark => mark.semester === semester);
-};
 
 
 export default function MarksPage() {
   const { user } = useAuth();
-  const { toast } = useToast(); // Added toast
+  const { toast } = useToast();
   const [marksForSemester, setMarksForSemester] = useState<SubjectMark[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedSemester, setSelectedSemester] = useState<string>("3"); // Default to sem 3 as per sample
-  const semesters = ["1", "2", "3", "4", "5", "6", "7", "8"]; // Example semesters
+  const [selectedSemester, setSelectedSemester] = useState<string>("3"); // Default to sem 3
+  const semesters = ["1", "2", "3", "4", "5", "6", "7", "8"]; 
 
   useEffect(() => {
     if (user && user.role === 'Student') {
       setIsLoading(true);
       const semesterNumber = parseInt(selectedSemester, 10);
-      // Using the temporary client-side localStorage access function
-      fetchStudentMarksData(user.id, semesterNumber).then(data => {
-        setMarksForSemester(data);
-        setIsLoading(false);
-      }).catch(error => {
-         console.error("Failed to fetch marks:", error);
-         toast({ title: "Error", description: "Could not load marks.", variant: "destructive" });
-         setIsLoading(false);
-      });
+      
+      fetchStudentMarksAction(user.id, semesterNumber)
+        .then(data => {
+          setMarksForSemester(data);
+          setIsLoading(false);
+        })
+        .catch(error => {
+           console.error("Failed to fetch marks:", error);
+           toast({ title: "Error", description: "Could not load your marks. Please try again later.", variant: "destructive" });
+           setIsLoading(false);
+        });
     } else {
-      setIsLoading(false); // Not a student or no user
+      setIsLoading(false); 
     }
-  }, [user, selectedSemester, toast]); // Refetch when user or semester changes
+  }, [user, selectedSemester, toast]);
 
 
   if (!user || user.role !== 'Student') {
@@ -120,13 +80,12 @@ export default function MarksPage() {
             <div className="space-y-4">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="flex items-center space-x-4 p-2 border-b">
-                   {/* Update skeleton to match new columns */}
-                   <Skeleton className="h-8 w-1/4" /> {/* Subject Name */}
-                   <Skeleton className="h-8 w-1/6" /> {/* Subject Code */}
-                   <Skeleton className="h-8 w-1/6" /> {/* IA 1 */}
-                   <Skeleton className="h-8 w-1/6" /> {/* IA 2 */}
-                   <Skeleton className="h-8 w-1/6" /> {/* Assign 1 */}
-                   <Skeleton className="h-8 w-1/6" /> {/* Assign 2 */}
+                   <Skeleton className="h-8 w-1/4" /> 
+                   <Skeleton className="h-8 w-1/6" /> 
+                   <Skeleton className="h-8 w-1/6" /> 
+                   <Skeleton className="h-8 w-1/6" /> 
+                   <Skeleton className="h-8 w-1/6" /> 
+                   <Skeleton className="h-8 w-1/6" />
                 </div>
               ))}
             </div>
@@ -151,7 +110,6 @@ export default function MarksPage() {
                     <TableCell className="text-center">{mark.ia2_50 ?? 'N/A'}</TableCell>
                     <TableCell className="text-center">{mark.assignment1_20 ?? 'N/A'}</TableCell>
                     <TableCell className="text-center">{mark.assignment2_20 ?? 'N/A'}</TableCell>
-                    {/* Remove the calculated Total column */}
                   </TableRow>
                 ))}
               </TableBody>

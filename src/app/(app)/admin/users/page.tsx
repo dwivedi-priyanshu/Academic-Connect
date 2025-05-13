@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,35 +9,30 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import type { User } from '@/types';
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-
-// Mock user data for admin view
-const MOCK_ALL_USERS: User[] = [
-  { id: 'student001', name: 'Alice Wonderland', email: 'alice@example.com', role: 'Student', avatar: 'https://picsum.photos/seed/student001/40/40' },
-  { id: 'student002', name: 'Bob The Builder', email: 'bob@example.com', role: 'Student', avatar: 'https://picsum.photos/seed/student002/40/40' },
-  { id: 'faculty001', name: 'Dr. Elara Vance', email: 'elara.vance@example.com', role: 'Faculty', avatar: 'https://picsum.photos/seed/faculty001/40/40' },
-  { id: 'admin001', name: 'Admin User', email: 'admin@example.com', role: 'Admin', avatar: 'https://picsum.photos/seed/admin001/40/40' },
-];
-
-const fetchAllUsers = async (): Promise<User[]> => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return MOCK_ALL_USERS;
-}
+import { fetchAllUsersAction } from '@/actions/profile-actions';
+import { useToast } from "@/hooks/use-toast";
 
 export default function AdminUsersPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (user && user.role === 'Admin') {
-        fetchAllUsers().then(data => {
+        setIsLoading(true);
+        fetchAllUsersAction().then(data => {
             setAllUsers(data);
+            setIsLoading(false);
+        }).catch(err => {
+            console.error("Error fetching users:", err);
+            toast({ title: "Error", description: "Could not load user list.", variant: "destructive" });
             setIsLoading(false);
         });
     } else {
         setIsLoading(false);
     }
-  }, [user]);
+  }, [user, toast]);
 
   if (!user || user.role !== 'Admin') {
     return <p>Access denied. This page is for administrators only.</p>;
@@ -94,6 +90,9 @@ export default function AdminUsersPage() {
                     ))}
                 </TableBody>
             </Table>
+          )}
+          {allUsers.length === 0 && !isLoading && (
+            <p className="text-center py-4 text-muted-foreground">No users found.</p>
           )}
           <div className="mt-6 p-4 bg-muted/50 rounded-lg text-center">
             <Users className="mx-auto h-12 w-12 text-muted-foreground mb-2" />

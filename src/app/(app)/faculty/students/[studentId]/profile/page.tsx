@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -10,54 +11,79 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
+import { fetchStudentFullProfileDataAction } from '@/actions/profile-actions'; // Updated import
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from '@/components/ui/skeleton';
 
-// Mock student data (same as in student list, but could be fetched by ID)
-const MOCK_STUDENTS_DATA: StudentProfile[] = [
-  { userId: 'student001', admissionId: 'S001', fullName: 'Alice Wonderland', dateOfBirth: '2002-05-10', contactNumber: '555-0101', address: '123 Rabbit Hole Lane', department: 'Computer Science', year: 2, section: 'A', parentName: 'Queen of Hearts', parentContact: '555-0102' },
-  { userId: 'student002', admissionId: 'S002', fullName: 'Bob The Builder', dateOfBirth: '2001-11-20', contactNumber: '555-0103', address: '456 Construction Site', department: 'Mechanical Engineering', year: 3, section: 'B', parentName: 'Wendy', parentContact: '555-0104' },
-  { userId: 'student003', admissionId: 'S003', fullName: 'Charlie Brown', dateOfBirth: '2003-02-15', contactNumber: '555-0105', address: '789 Peanut Street', department: 'Electronics Engineering', year: 1, section: 'A', parentName: 'Mr. Brown', parentContact: '555-0106' },
-  { userId: 'student004', admissionId: 'S004', fullName: 'Diana Prince', dateOfBirth: '2000-08-01', contactNumber: '555-0107', address: 'Themyscira Island', department: 'Civil Engineering', year: 4, section: 'C', parentName: 'Hippolyta', parentContact: '555-0108' },
-  { userId: 'student005', admissionId: 'S005', fullName: 'Edward Scissorhands', dateOfBirth: '2002-12-25', contactNumber: '555-0109', address: 'Gothic Mansion Hilltop', department: 'Computer Science', year: 2, section: 'B', parentName: 'The Inventor', parentContact: '555-0110' },
-];
-
-// Mock function to fetch a specific student's profile data
-const fetchStudentProfileById = async (studentId: string): Promise<StudentProfile | null> => {
-  console.log("Fetching profile for student ID:", studentId);
-  await new Promise(resolve => setTimeout(resolve, 500));
-  // In a real app, fetch from backend.
-  const storedProfile = localStorage.getItem(`profile-${studentId}`);
-  if (storedProfile) return JSON.parse(storedProfile);
-  
-  const student = MOCK_STUDENTS_DATA.find(s => s.userId === studentId);
-  return student || null;
-};
 
 export default function FacultyViewStudentProfilePage() {
   const { user } = useAuth();
   const params = useParams();
   const router = useRouter();
   const studentId = params.studentId as string;
+  const { toast } = useToast();
 
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (user && user.role === 'Faculty' && studentId) {
-      fetchStudentProfileById(studentId).then(data => {
+      setIsLoading(true);
+      fetchStudentFullProfileDataAction(studentId).then(data => { // Using the detailed profile fetch
         setProfile(data);
+        setIsLoading(false);
+      }).catch(err => {
+        console.error("Error fetching student profile:", err);
+        toast({title: "Error", description: "Could not load student profile.", variant: "destructive"});
         setIsLoading(false);
       });
     } else {
-      setIsLoading(false); // Not a faculty or no studentId
+      setIsLoading(false); 
     }
-  }, [user, studentId]);
+  }, [user, studentId, toast]);
 
   if (!user || user.role !== 'Faculty') {
     return <p>Access denied. This page is for faculty members only.</p>;
   }
 
   if (isLoading) {
-    return <p>Loading student profile...</p>; // Or a skeleton loader
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-32 mb-4" />
+        <Skeleton className="h-8 w-64 mb-2" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2 shadow-lg">
+            <CardHeader className="flex flex-row items-center space-x-4 bg-muted/30 p-6 rounded-t-lg">
+                <Skeleton className="h-20 w-20 rounded-full" />
+                <div>
+                    <Skeleton className="h-7 w-48 mb-2" />
+                    <Skeleton className="h-5 w-64" />
+                </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                {[...Array(10)].map((_, i) => (
+                  <div key={i} className="space-y-1">
+                    <Skeleton className="h-4 w-24 mb-1" />
+                    <Skeleton className="h-8 w-full" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="lg:col-span-1 shadow-lg h-fit">
+            <CardHeader>
+              <Skeleton className="h-6 w-32 mb-1" />
+              <Skeleton className="h-4 w-48" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+               <Skeleton className="h-10 w-full mt-2" />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
   }
 
   if (!profile) {
@@ -78,9 +104,12 @@ export default function FacultyViewStudentProfilePage() {
   ];
   
   const quickLinks = [
-    { label: "View Marks", href: `/faculty/students/${studentId}/marks`, icon: ClipboardList },
-    { label: "View Projects", href: `/faculty/students/${studentId}/projects`, icon: FileText },
-    { label: "View MOOCs", href: `/faculty/students/${studentId}/moocs`, icon: BookOpen },
+    // These links need to be updated if student-specific views are implemented for faculty
+    // For now, they might not be functional or point to student's own views if IDs match.
+    // This requires dedicated faculty views for student specific data.
+    // { label: "View Marks", href: `/faculty/students/${studentId}/marks`, icon: ClipboardList },
+    // { label: "View Projects", href: `/faculty/students/${studentId}/projects`, icon: FileText },
+    // { label: "View MOOCs", href: `/faculty/students/${studentId}/moocs`, icon: BookOpen },
   ];
 
 
@@ -139,8 +168,9 @@ export default function FacultyViewStudentProfilePage() {
                 </Link>
               </Button>
             ))}
+             {/* This button should ideally link to marks entry page pre-filled with student's details or context */}
             <Button variant="default" className="w-full justify-start mt-2" disabled>
-                Enter Marks for this Student
+                Enter Marks (Contextual - TBD)
             </Button>
           </CardContent>
         </Card>
@@ -148,3 +178,4 @@ export default function FacultyViewStudentProfilePage() {
     </div>
   );
 }
+

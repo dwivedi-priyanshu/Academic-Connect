@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -11,42 +12,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { StudentProfile } from '@/types';
 import { Users, Search, Eye, Info } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { fetchStudentsForFacultyAction } from '@/actions/profile-actions'; // Updated action import
+import { useToast } from '@/hooks/use-toast';
 
-// Mock student data
-const MOCK_STUDENTS_DATA: StudentProfile[] = [
-  { userId: 'student001', admissionId: 'S001', fullName: 'Alice Wonderland', dateOfBirth: '2002-05-10', contactNumber: '555-0101', address: '123 Rabbit Hole Lane', department: 'Computer Science', year: 3, section: 'A', parentName: 'Queen of Hearts', parentContact: '555-0102' },
-  { userId: 'student002', admissionId: 'S002', fullName: 'Bob The Builder', dateOfBirth: '2001-11-20', contactNumber: '555-0103', address: '456 Construction Site', department: 'Computer Science', year: 3, section: 'A', parentName: 'Wendy', parentContact: '555-0104' }, // Changed dept/year/section for testing filter
-  { userId: 'student003', admissionId: 'S003', fullName: 'Charlie Brown', dateOfBirth: '2003-02-15', contactNumber: '555-0105', address: '789 Peanut Street', department: 'Computer Science', year: 3, section: 'B', parentName: 'Mr. Brown', parentContact: '555-0106' },
-  { userId: 'student004', admissionId: 'S004', fullName: 'Diana Prince', dateOfBirth: '2000-08-01', contactNumber: '555-0107', address: 'Themyscira Island', department: 'Civil Engineering', year: 4, section: 'C', parentName: 'Hippolyta', parentContact: '555-0108' },
-  { userId: 'student005', admissionId: 'S005', fullName: 'Edward Scissorhands', dateOfBirth: '2002-12-25', contactNumber: '555-0109', address: 'Gothic Mansion Hilltop', department: 'Computer Science', year: 3, section: 'B', parentName: 'The Inventor', parentContact: '555-0110' },
-];
-
-// Mock API to fetch students (now simulates filtering)
-const fetchStudents = async (semester?: number, section?: string, subjectCode?: string): Promise<StudentProfile[]> => {
-  console.log(`Fetching students for Sem: ${semester}, Sec: ${section}, Sub: ${subjectCode}`);
-  await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
-
-  // In a real app, this would filter by faculty's department/courses and the selected criteria.
-  // Mock filtering: Filter MOCK_STUDENTS_DATA based on year (derived from semester) and section.
-  // Subject filtering isn't directly possible with current StudentProfile structure, but IRL the backend would handle it.
-  const year = semester ? Math.ceil(semester / 2) : undefined;
-
-  let filtered = MOCK_STUDENTS_DATA;
-  if (year) {
-    filtered = filtered.filter(s => s.year === year);
-  }
-  if (section) {
-    filtered = filtered.filter(s => s.section === section);
-  }
-  // We won't filter by subject in the mock as it's not on the student profile.
-
-  return filtered;
-};
-
-// Mock data for selections (same as marks-entry)
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
 const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
@@ -54,66 +25,70 @@ const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
   "2": [{ code: "MA201", name: "Applied Mathematics II" }, { code: "CH202", name: "Engineering Chemistry" }],
   "3": [{ code: "CS201", name: "Data Structures" }, { code: "CS202", name: "Discrete Mathematics" }, { code: "MA201", name: "Probability & Statistics" }, { code: "DDCO", name: "Digital Design & Comp Org"}],
    "4": [{ code: "CS401", name: "Algorithms" }, { code: "CS402", name: "Operating Systems" }],
-   // Add more semesters and subjects
 };
-
 
 export default function FacultyStudentsPage() {
   const { user } = useAuth();
-  const [allStudents, setAllStudents] = useState<StudentProfile[]>([]); // Holds potentially all faculty-related students
-  const [filteredStudents, setFilteredStudents] = useState<StudentProfile[]>([]); // Holds students filtered by selections AND search
+  const { toast } = useToast();
+  const [allStudentsFromSelection, setAllStudentsFromSelection] = useState<StudentProfile[]>([]);
+  const [filteredStudents, setFilteredStudents] = useState<StudentProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(false); // Only loading when fetching based on selection
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false); // Track initial page load
+  const [isLoading, setIsLoading] = useState(false);
+  const [initialLoadAttempted, setInitialLoadAttempted] = useState(false);
 
   const [selectedSemester, setSelectedSemester] = useState<string>("");
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [selectedSubject, setSelectedSubject] = useState<{ code: string, name: string } | null>(null);
   const [subjectsForSemester, setSubjectsForSemester] = useState<{ code: string, name: string }[]>([]);
 
-  // Update subjects when semester changes
   useEffect(() => {
     setSubjectsForSemester(SUBJECTS_BY_SEMESTER[selectedSemester] || []);
-    setSelectedSubject(null); // Reset subject selection when semester changes
-    setFilteredStudents([]); // Clear student list when semester changes
+    setSelectedSubject(null);
+    setFilteredStudents([]);
+    setAllStudentsFromSelection([]);
+    setInitialLoadAttempted(false);
   }, [selectedSemester]);
 
-  // Fetch students when selections are complete
   useEffect(() => {
     if (user && user.role === 'Faculty' && selectedSemester && selectedSection && selectedSubject) {
       setIsLoading(true);
-      fetchStudents(parseInt(selectedSemester), selectedSection, selectedSubject.code).then(data => {
-        setAllStudents(data); // Store the list based on selection
-        setFilteredStudents(data); // Initially display all fetched students
+      setInitialLoadAttempted(true);
+      const year = Math.ceil(parseInt(selectedSemester) / 2);
+      // Assuming faculty might be associated with a department, but for now, simplified.
+      // The subject selected might also imply a department.
+      // For this mock, we pass undefined for department, but in a real app, it would be derived.
+      fetchStudentsForFacultyAction(user.id, { year, section: selectedSection }).then(data => {
+        setAllStudentsFromSelection(data);
+        setFilteredStudents(data);
         setIsLoading(false);
-        setInitialLoadComplete(true);
       }).catch(error => {
           console.error("Error fetching students:", error);
+          toast({title: "Error", description: "Could not load student list.", variant: "destructive"});
           setIsLoading(false);
-          setInitialLoadComplete(true); // Mark load as complete even on error
       });
     } else {
-      setAllStudents([]); // Clear if selection is incomplete
+      setAllStudentsFromSelection([]);
       setFilteredStudents([]);
       setIsLoading(false);
-       // Don't set initialLoadComplete here, wait for selections
+      if (selectedSemester && selectedSection && selectedSubject) {
+        // If all selections are made but user context is not ready or role is wrong.
+        setInitialLoadAttempted(true); 
+      }
     }
-  }, [user, selectedSemester, selectedSection, selectedSubject]);
+  }, [user, selectedSemester, selectedSection, selectedSubject, toast]);
 
-  // Filter based on search term
   useEffect(() => {
     if (!searchTerm) {
-      setFilteredStudents(allStudents); // If search is cleared, show all students from selection
+      setFilteredStudents(allStudentsFromSelection);
     } else {
       setFilteredStudents(
-        allStudents.filter(student =>
+        allStudentsFromSelection.filter(student =>
           student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          student.admissionId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          student.department.toLowerCase().includes(searchTerm.toLowerCase()) // department might be redundant if filtering by selection
+          student.admissionId.toLowerCase().includes(searchTerm.toLowerCase())
         )
       );
     }
-  }, [searchTerm, allStudents]);
+  }, [searchTerm, allStudentsFromSelection]);
 
 
   if (!user || user.role !== 'Faculty') {
@@ -128,7 +103,6 @@ export default function FacultyStudentsPage() {
         <h1 className="text-3xl font-bold flex items-center"><Users className="mr-2 h-8 w-8 text-primary" /> Student List</h1>
       </div>
 
-      {/* Selection Card */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Select Class and Subject</CardTitle>
@@ -173,7 +147,6 @@ export default function FacultyStudentsPage() {
         </CardContent>
       </Card>
 
-      {/* Student List Card - Shows only after selection */}
       {selectionMade && (
         <Card className="shadow-lg">
           <CardHeader>
@@ -183,11 +156,11 @@ export default function FacultyStudentsPage() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search within this list..."
+                placeholder="Search within this list by name or USN..."
                 className="pl-8 sm:w-1/2 md:w-1/3 bg-background"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                disabled={isLoading} // Disable search while loading
+                disabled={isLoading}
               />
             </div>
           </CardHeader>
@@ -223,7 +196,7 @@ export default function FacultyStudentsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12"></TableHead> {/* For Avatar */}
+                    <TableHead className="w-12"></TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Admission ID</TableHead>
                     <TableHead>Department</TableHead>
@@ -259,14 +232,13 @@ export default function FacultyStudentsPage() {
               </Table>
             ) : (
               <p className="text-center py-8 text-muted-foreground">
-                {initialLoadComplete ? "No students found matching your criteria." : "Loading students..."}
+                {initialLoadAttempted ? "No students found matching your criteria." : "Select options to load students."}
               </p>
             )}
           </CardContent>
         </Card>
       )}
 
-      {/* Show message if no selection is made */}
       {!selectionMade && !isLoading && (
          <Alert className="mt-6 bg-accent/20 border-accent text-accent-foreground">
              <Info className="h-5 w-5 text-accent" />
@@ -274,7 +246,7 @@ export default function FacultyStudentsPage() {
             <AlertDescription>Please select a semester, section, and subject above to view the corresponding student list.</AlertDescription>
         </Alert>
       )}
-
     </div>
   );
 }
+
