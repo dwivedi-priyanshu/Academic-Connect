@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Button } from '@/components/ui/button';
@@ -359,8 +358,8 @@ export default function MarksEntryPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[150px] sticky left-0 bg-card z-10">USN</TableHead>
-                      <TableHead className="w-[200px] sticky left-[150px] bg-card z-10">Student Name</TableHead>
+                      <TableHead className="w-[180px] sticky left-0 bg-card z-10">USN</TableHead>
+                      <TableHead className="w-[200px] sticky left-[180px] bg-card z-10">Student Name</TableHead>
                       <TableHead className="text-center w-28">IA 1 (50)</TableHead>
                       <TableHead className="text-center w-28">IA 2 (50)</TableHead>
                       <TableHead className="text-center w-32">Assign 1 (20)</TableHead>
@@ -381,7 +380,7 @@ export default function MarksEntryPage() {
                                 placeholder="Enter USN"
                             />
                         </TableCell>
-                        <TableCell className="font-medium sticky left-[150px] bg-card z-10 px-1 py-1">
+                        <TableCell className="font-medium sticky left-[180px] bg-card z-10 px-1 py-1">
                            <Input
                                 type="text"
                                 className="w-full text-sm bg-background h-9"
