@@ -1,10 +1,9 @@
-
 'use server';
 
 import { z } from 'zod';
-import type { SubjectMark, StudentProfile } from '@/types';
+import type { SubjectMark, StudentProfile, User } from '@/types'; // Added User
 import { connectToDatabase } from '@/lib/mongodb';
-import { MARKS_COLLECTION, STUDENT_PROFILES_COLLECTION } from '@/lib/constants';
+import { MARKS_COLLECTION, STUDENT_PROFILES_COLLECTION, USERS_COLLECTION } from '@/lib/constants'; // Added USERS_COLLECTION
 import type { Collection, Filter } from 'mongodb';
 import { ObjectId } from 'mongodb';
 
@@ -17,6 +16,11 @@ async function getMarksCollection(): Promise<Collection<SubjectMark>> {
 async function getStudentProfilesCollection(): Promise<Collection<StudentProfile>> {
   const { db } = await connectToDatabase();
   return db.collection<StudentProfile>(STUDENT_PROFILES_COLLECTION);
+}
+
+async function getUsersCollection(): Promise<Collection<User>> {
+  const { db } = await connectToDatabase();
+  return db.collection<User>(USERS_COLLECTION);
 }
 
 
@@ -39,36 +43,43 @@ export async function fetchStudentProfilesForMarksEntry(
     console.log(`Fetching student profiles and marks for Sem: ${semester}, Sec: ${section}, Sub: ${subjectCode}, Faculty: ${facultyId}`);
     const studentProfilesCollection = await getStudentProfilesCollection();
     const marksCollection = await getMarksCollection();
+    const usersCollection = await getUsersCollection();
 
     const year = Math.ceil(semester / 2);
 
+    // 1. Get User.ids of active students
+    // Assuming User documents have a string 'id' field which is the hex string of _id.
+    // If 'id' field doesn't exist, project _id and map it.
+    // Based on auth-actions, user documents should have an 'id' field.
+    const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1 }).toArray();
+    const activeStudentUserIds = activeStudentUsers.map(u => u.id).filter(id => !!id); // Ensure no undefined/null ids
+
+    if (activeStudentUserIds.length === 0) {
+        console.log("No active students found in the system.");
+        return [];
+    }
+    
     // Fetch active student profiles for the given year and section
-    // It's crucial that StudentProfile.userId corresponds to User.id, which is a string (ObjectId.toHexString())
-    // And StudentProfile.id is its own _id.toHexString()
     const studentProfilesCursor = studentProfilesCollection.find({
         year,
         section,
-        // Add a check for student.user.status === 'Active' by joining with users collection or ensuring profiles are only for active users
-        // For now, assuming StudentProfile implies an associated active user if they are in a class section.
-        // A more robust way would be to fetch active User IDs first, then query StudentProfile.
-        // This is handled in fetchStudentsForFacultyAction, we can adapt similar logic if needed here or ensure consistency.
-        // For now, let's assume profiles are for students who are generally active in the system.
-        // The `fetchStudentsForFacultyAction` already filters by active users. Here we directly query profiles.
-        // This means the admin must ensure students are 'Active' AND assigned to sections.
+        userId: { $in: activeStudentUserIds } // Filter profiles by active student User.ids
     });
     const studentProfiles = (await studentProfilesCursor.toArray()).map(p => {
         const { _id, ...rest } = p;
+        // Ensure userId from DB (p.userId) is carried through. It should be a string.
         return { ...rest, id: _id.toHexString(), _id: _id.toHexString(), userId: p.userId } as StudentProfile;
     });
 
     if (studentProfiles.length === 0) {
+      console.log(`No active student profiles found for Sem ${semester}, Sec ${section} matching active users.`);
       return [];
     }
 
-    const studentUserIds = studentProfiles.map(p => p.userId); // Use User.id (string)
+    const studentUserIdsForMarksQuery = studentProfiles.map(p => p.userId); // Use User.id (string) from the filtered profiles
 
     const marksQuery: Filter<SubjectMark> = {
-      studentId: { $in: studentUserIds }, // Query by User.id
+      studentId: { $in: studentUserIdsForMarksQuery }, // Query by User.id
       semester: semester,
       subjectCode: subjectCode,
     };
@@ -77,15 +88,14 @@ export async function fetchStudentProfilesForMarksEntry(
 
     const marksMap = new Map<string, SubjectMark>();
     existingMarksArray.forEach(markDoc => {
-      // Ensure _id is stringified, which it should be as it's the composite key.
-      // Also ensure 'id' field is present and matches _id.
+      // markDoc._id is composite key string, markDoc.studentId is User.id string
       const markWithStrId = { ...markDoc, _id: String(markDoc._id), id: String(markDoc._id) } as SubjectMark;
       marksMap.set(markDoc.studentId, markWithStrId); // Key by studentId (User.id)
     });
 
     const result = studentProfiles.map(profile => {
       return {
-        profile: profile, // profile already has string IDs
+        profile: profile, // profile already has string IDs and correct userId
         marks: marksMap.get(profile.userId), // Get marks using User.id
       };
     });
@@ -109,7 +119,7 @@ const SubjectMarkInputSchema = z.object({
   ia2_50: z.number().min(0).max(50).nullable().optional(),
   assignment1_20: z.number().min(0).max(20).nullable().optional(),
   assignment2_20: z.number().min(0).max(20).nullable().optional(),
-  // id and _id will be derived, not part of direct input for this action
+  // final_marks_50 field removed as it was not in original schema and auto-calculation is complex for generic save
 });
 type SubjectMarkInput = z.infer<typeof SubjectMarkInputSchema>;
 
@@ -130,7 +140,7 @@ export async function saveMultipleStudentMarksAction(
     console.log(`Saving ${marksEntries.length} student marks entries by Faculty: ${facultyId}`);
 
     const marksCollection = await getMarksCollection();
-    const operations: any[] = []; // Array for bulkWrite operations
+    const operations: any[] = []; 
     const validationErrors: any[] = [];
 
     for (const entry of marksEntries) {
@@ -142,12 +152,13 @@ export async function saveMultipleStudentMarksAction(
       }
 
       const validEntry = validation.data;
+      // Ensure studentId is a valid user ID string.
+      // The studentId field in SubjectMarkInput is expected to be the User.id (string).
       const markId = `${validEntry.studentId}-${validEntry.subjectCode}-${validEntry.semester}`;
 
-      // Construct the document for MongoDB, ensuring all assessment fields are explicitly present or null
       const markDocument: SubjectMark = {
         id: markId,
-        _id: markId, // Use the composite key as MongoDB _id
+        _id: markId, 
         studentId: validEntry.studentId,
         usn: validEntry.usn,
         studentName: validEntry.studentName,
@@ -158,12 +169,11 @@ export async function saveMultipleStudentMarksAction(
         ia2_50: validEntry.ia2_50 ?? null,
         assignment1_20: validEntry.assignment1_20 ?? null,
         assignment2_20: validEntry.assignment2_20 ?? null,
-        // credits field is optional and not handled in this form, can be added if needed
       };
 
       operations.push({
         updateOne: {
-          filter: { _id: markId }, // Query by the composite _id which includes studentId
+          filter: { _id: markId }, 
           update: { $set: markDocument },
           upsert: true,
         },
@@ -218,23 +228,37 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
   console.log(`Fetching marks from DB for Performance Analysis: Sem ${semester}, Sec ${section}, Sub ${subjectCode}`);
   const marksCollection = await getMarksCollection();
   const studentProfilesCollection = await getStudentProfilesCollection();
+  const usersCollection = await getUsersCollection(); // Added for filtering by active users
 
   const year = Math.ceil(semester / 2);
 
-  // 1. Find students in the given year and section
-  const studentProfilesCursor = studentProfilesCollection.find({ year, section });
-  const studentProfiles = await studentProfilesCursor.toArray();
+  // 1. Find active student User.ids
+  const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1 }).toArray();
+  const activeStudentUserIds = activeStudentUsers.map(u => u.id).filter(id => !!id);
 
-  if (studentProfiles.length === 0) {
-    console.log(`No student profiles found for Sem ${semester}, Sec ${section}. Returning empty marks array.`);
+  if (activeStudentUserIds.length === 0) {
+    console.log("No active students found in the system for performance analysis.");
     return [];
   }
 
-  const studentUserIds = studentProfiles.map(p => p.userId); // These are User.id strings
+  // 2. Find student profiles for the given year and section, among active students
+  const studentProfilesCursor = studentProfilesCollection.find({ 
+    year, 
+    section,
+    userId: { $in: activeStudentUserIds }
+  });
+  const studentProfiles = await studentProfilesCursor.toArray();
 
-  // 2. Fetch marks for these students for the given subject and semester
+  if (studentProfiles.length === 0) {
+    console.log(`No active student profiles found for Sem ${semester}, Sec ${section}. Returning empty marks array.`);
+    return [];
+  }
+
+  const studentUserIdsForMarksQuery = studentProfiles.map(p => p.userId); 
+
+  // 3. Fetch marks for these students for the given subject and semester
   const marksQuery: Filter<SubjectMark> = {
-    studentId: { $in: studentUserIds }, // Query by User.id
+    studentId: { $in: studentUserIdsForMarksQuery }, 
     semester: semester,
     subjectCode: subjectCode,
   };
@@ -242,9 +266,8 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
   const fetchedMarks = await marksCollection.find(marksQuery).toArray();
 
   return fetchedMarks.map(doc => {
-    // _id is already a string (studentId-subjectCode-semester) and is also stored as 'id'.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...rest } = doc;
     return { ...rest, id: String(doc._id), _id: String(doc._id) } as SubjectMark;
   });
 }
+
