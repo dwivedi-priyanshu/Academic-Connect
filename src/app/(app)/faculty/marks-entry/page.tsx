@@ -21,13 +21,16 @@ const SECTIONS = ["A", "B", "C", "D"];
 const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
   "1": [{ code: "MA101", name: "Applied Mathematics I" }, { code: "PH102", name: "Engineering Physics" }],
   "2": [{ code: "MA201", name: "Applied Mathematics II" }, { code: "CH202", name: "Engineering Chemistry" }],
-  "3": [{ code: "CS201", name: "Data Structures" }, { code: "CS202", name: "Discrete Mathematics" }, { code: "MA201", name: "Probability & Statistics" }, { code: "DDCO", name: "Digital Design & Comp Org"}],
-  "4": [{ code: "CS401", name: "Algorithms" }, { code: "CS402", name: "Operating Systems" }],
-  // Add more semesters and subjects
+  "3": [{ code: "CS301", name: "Data Structures" }, { code: "CS302", name: "Discrete Mathematics" }, { code: "EC303", name: "Analog Electronics" }, { code: "CS304", name: "Digital Design & Comp Org"}],
+  "4": [{ code: "CS401", name: "Algorithms" }, { code: "CS402", name: "Operating Systems" }, { code: "EC403", name: "Microcontrollers"} ],
+  "5": [{ code: "CS501", name: "Database Management" }, { code: "CS502", name: "Computer Networks" }],
+  "6": [{ code: "CS601", name: "Compiler Design" }, { code: "CS602", name: "Software Engineering" }],
+  "7": [{ code: "CS701", name: "Artificial Intelligence" }, { code: "CS702", name: "Cryptography" }],
+  "8": [{ code: "CS801", name: "Project Work" }, { code: "CS802", name: "Professional Elective" }],
 };
 
-interface StudentWithMarks extends StudentProfile {
-  marks?: Partial<SubjectMark>; // Marks for the current subject
+interface StudentWithMarksData extends StudentProfile {
+  marks: SubjectMark; // Marks for the current subject, ensure all fields are present
 }
 
 
@@ -39,19 +42,20 @@ export default function MarksEntryPage() {
   const [selectedSubject, setSelectedSubject] = useState<{ code: string, name: string } | null>(null);
   const [subjectsForSemester, setSubjectsForSemester] = useState<{ code: string, name: string }[]>([]);
   
-  const [studentsForEntry, setStudentsForEntry] = useState<StudentWithMarks[]>([]);
+  const [studentsForEntry, setStudentsForEntry] = useState<StudentWithMarksData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [initialLoadAttempted, setInitialLoadAttempted] = useState(false);
 
   useEffect(() => {
     setSubjectsForSemester(SUBJECTS_BY_SEMESTER[selectedSemester] || []);
-    setSelectedSubject(null);
+    setSelectedSubject(null); // Reset subject when semester changes
     setStudentsForEntry([]);
     setInitialLoadAttempted(false);
   }, [selectedSemester]);
 
   useEffect(() => {
+     // Reset students when section or subject changes before new load
      setStudentsForEntry([]);
      setInitialLoadAttempted(false);
   }, [selectedSection, selectedSubject])
@@ -60,7 +64,7 @@ export default function MarksEntryPage() {
   const loadStudentsAndMarks = useCallback(async () => {
     if (user && selectedSemester && selectedSection && selectedSubject) {
       setIsLoading(true);
-      setInitialLoadAttempted(true);
+      setInitialLoadAttempted(true); // Mark that a load has been attempted for current selections
       try {
         const data = await fetchStudentProfilesForMarksEntry(
           parseInt(selectedSemester),
@@ -69,66 +73,75 @@ export default function MarksEntryPage() {
           user.id
         );
         
-        setStudentsForEntry(data.map(item => ({
-          ...item.profile,
-          // Initialize marks structure if not present or ensure all fields are there
-          marks: item.marks ? {
-            studentId: item.profile.userId, // Ensure studentId is set from profile
+        // Transform data to ensure `marks` object is always present and fully initialized
+        const transformedData: StudentWithMarksData[] = data.map(item => {
+          // Ensure all required fields are present in the marks object
+          const baseMarks: SubjectMark = {
+            id: `${item.profile.userId}-${selectedSubject!.code}-${selectedSemester}`, // Use user ID for studentId
+            _id: `${item.profile.userId}-${selectedSubject!.code}-${selectedSemester}`,
+            studentId: item.profile.userId, 
             usn: item.profile.admissionId,
             studentName: item.profile.fullName,
-            subjectCode: selectedSubject.code,
-            subjectName: selectedSubject.name,
+            subjectCode: selectedSubject!.code,
+            subjectName: selectedSubject!.name,
             semester: parseInt(selectedSemester),
-            ia1_50: item.marks.ia1_50 ?? null,
-            ia2_50: item.marks.ia2_50 ?? null,
-            assignment1_20: item.marks.assignment1_20 ?? null,
-            assignment2_20: item.marks.assignment2_20 ?? null,
-          } : {
-            studentId: item.profile.userId,
-            usn: item.profile.admissionId,
-            studentName: item.profile.fullName,
-            subjectCode: selectedSubject.code,
-            subjectName: selectedSubject.name,
-            semester: parseInt(selectedSemester),
-            ia1_50: null, ia2_50: null, assignment1_20: null, assignment2_20: null
-          }
-        })));
-        if (data.length === 0) {
-            toast({title: "No Students", description: "No students found for this class/section combination.", variant: "default"});
+            ia1_50: null,
+            ia2_50: null,
+            assignment1_20: null,
+            assignment2_20: null,
+          };
+          return {
+            ...item.profile,
+            marks: item.marks ? { ...baseMarks, ...item.marks } : baseMarks,
+          };
+        });
+        
+        setStudentsForEntry(transformedData);
+
+        if (transformedData.length === 0) {
+            toast({title: "No Students Found", description: "No active students found for this class/section. Ensure student accounts are 'Active' and have assigned USNs.", variant: "default"});
         }
       } catch (error) {
         console.error("Error fetching students/marks:", error);
-        toast({ title: "Error", description: "Could not load student data.", variant: "destructive" });
+        toast({ title: "Error Loading Data", description: (error as Error).message || "Could not load student data. Please check selections or try again.", variant: "destructive" });
         setStudentsForEntry([]);
       } finally {
         setIsLoading(false);
       }
+    } else {
+      // Clear data if selections are incomplete
+      setStudentsForEntry([]);
+      setInitialLoadAttempted(false);
     }
   }, [user, selectedSemester, selectedSection, selectedSubject, toast]);
 
+  // Trigger loadStudentsAndMarks when selections change
   useEffect(() => {
     if (selectedSemester && selectedSection && selectedSubject && user) {
         loadStudentsAndMarks();
     } else {
+        // Clear data if selections are not complete
         setStudentsForEntry([]);
         setInitialLoadAttempted(false);
     }
-  }, [loadStudentsAndMarks, selectedSemester, selectedSection, selectedSubject, user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSemester, selectedSection, selectedSubject, user]); // loadStudentsAndMarks is memoized and stable
 
 
-  const handleMarkChange = (studentUserId: string, field: keyof SubjectMark, value: string) => {
+  const handleMarkChange = (studentUserId: string, field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50' | 'assignment1_20' | 'assignment2_20'>, value: string) => {
     const numericValue = value === '' || value === null || isNaN(parseFloat(value)) ? null : parseFloat(value);
     const maxValues: Record<string, number> = { ia1_50: 50, ia2_50: 50, assignment1_20: 20, assignment2_20: 20 };
 
     if (numericValue !== null && (numericValue < 0 || (maxValues[field] !== undefined && numericValue > maxValues[field]))) {
-      toast({ title: "Invalid Mark", description: `Mark must be between 0 and ${maxValues[field]}.`, variant: "destructive" });
-      return; // Or revert UI change
+      toast({ title: "Invalid Mark", description: `Mark for ${field.replace('_', ' ')} must be between 0 and ${maxValues[field]}.`, variant: "destructive" });
+      // Potentially revert UI change here or prevent it
+      return; 
     }
 
     setStudentsForEntry(prev =>
       prev.map(student =>
         student.userId === studentUserId
-          ? { ...student, marks: { ...(student.marks as SubjectMark), [field]: numericValue } }
+          ? { ...student, marks: { ...student.marks, [field]: numericValue } }
           : student
       )
     );
@@ -136,65 +149,59 @@ export default function MarksEntryPage() {
 
   const handleSaveChanges = async () => {
     if (!user || !selectedSemester || !selectedSection || !selectedSubject || studentsForEntry.length === 0) {
-      toast({ title: "Cannot Save", description: "No data or selection incomplete.", variant: "destructive" });
+      toast({ title: "Cannot Save", description: "No data to save or selection incomplete. Please select semester, section, subject and ensure students are loaded.", variant: "destructive" });
       return;
     }
 
     setIsSaving(true);
-    const marksToSave: SubjectMark[] = studentsForEntry
-      .map(s => s.marks as SubjectMark) // Cast as SubjectMark, assuming structure is correct
-      .filter(m => m && (m.ia1_50 !== null || m.ia2_50 !== null || m.assignment1_20 !== null || m.assignment2_20 !== null)); // Only save if at least one mark is entered
+    // Prepare marks for saving: ensure all required fields from StudentProfile are included in SubjectMark
+    const marksToSave: SubjectMark[] = studentsForEntry.map(student => student.marks);
 
     if (marksToSave.length === 0) {
-        toast({ title: "No Marks to Save", description: "No marks have been entered or changed.", variant: "default" });
+        toast({ title: "No Marks to Save", description: "No marks have been entered or changed for any student.", variant: "default" });
         setIsSaving(false);
         return;
     }
     
-    // Ensure all required fields for SubjectMark are present
-     const validatedMarksToSave = marksToSave.map(m => ({
-        id: `${m.studentId}-${m.subjectCode}-${m.semester}`, // Ensure ID is correctly formed
-        _id: `${m.studentId}-${m.subjectCode}-${m.semester}`,
-        ...m,
-        // Ensure these are properly populated from the student's profile data / selection
-        studentId: m.studentId,
-        usn: studentsForEntry.find(s => s.userId === m.studentId)?.admissionId || 'N/A',
-        studentName: studentsForEntry.find(s => s.userId === m.studentId)?.fullName || 'N/A',
-        subjectCode: selectedSubject!.code,
-        subjectName: selectedSubject!.name,
-        semester: parseInt(selectedSemester),
-    }));
-
-
     try {
-      const result = await saveMultipleStudentMarksAction(validatedMarksToSave, user.id);
+      const result = await saveMultipleStudentMarksAction(marksToSave, user.id);
       if (result.success) {
         toast({ title: "Changes Saved", description: result.message, className: "bg-success text-success-foreground" });
-        loadStudentsAndMarks(); // Refresh data
+        loadStudentsAndMarks(); // Refresh data from DB
       } else {
-        toast({ title: "Save Failed", description: result.message, variant: "destructive" });
+        toast({ title: "Save Failed", description: result.message || "Could not save marks.", variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Error saving marks:", error);
-      toast({ title: "Save Error", description: `An unexpected error occurred: ${error.message}`, variant: "destructive" });
+      toast({ title: "Save Error", description: `An unexpected error occurred: ${error.message || "Please try again."}`, variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
   };
   
   const calculateSummary = useMemo(() => {
-    const marksList = studentsForEntry.map(s => s.marks).filter(Boolean) as SubjectMark[];
+    const marksList = studentsForEntry.map(s => s.marks);
     if (marksList.length === 0) return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
     
     const validForCalc = marksList.filter(m => m.ia1_50 !== null || m.ia2_50 !== null || m.assignment1_20 !== null || m.assignment2_20 !== null);
-    const count = validForCalc.length;
-    if (count === 0) return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
+    const totalStudentsInList = studentsForEntry.length; // Count of all students fetched for the class
+    
+    if (validForCalc.length === 0 && totalStudentsInList > 0) { // Students exist, but no marks entered yet
+        return { count: totalStudentsInList, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
+    }
+    if (totalStudentsInList === 0) { // No students fetched
+        return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
+    }
 
-    const sum = (field: keyof SubjectMark) => validForCalc.reduce((acc, m) => acc + (typeof m[field] === 'number' ? m[field] as number : 0), 0);
-    const numValid = (field: keyof SubjectMark) => validForCalc.filter(m => typeof m[field] === 'number').length;
+
+    const sum = (field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50' | 'assignment1_20' | 'assignment2_20'>) => 
+        validForCalc.reduce((acc, m) => acc + (typeof m[field] === 'number' ? m[field] as number : 0), 0);
+    
+    const numValid = (field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50' | 'assignment1_20' | 'assignment2_20'>) => 
+        validForCalc.filter(m => typeof m[field] === 'number').length;
 
     return {
-        count: studentsForEntry.length, // Total students in list
+        count: totalStudentsInList,
         avgIA1: numValid('ia1_50') > 0 ? (sum('ia1_50') / numValid('ia1_50')).toFixed(2) : 'N/A',
         avgIA2: numValid('ia2_50') > 0 ? (sum('ia2_50') / numValid('ia2_50')).toFixed(2) : 'N/A',
         avgAssign1: numValid('assignment1_20') > 0 ? (sum('assignment1_20') / numValid('assignment1_20')).toFixed(2) : 'N/A',
@@ -204,7 +211,13 @@ export default function MarksEntryPage() {
 
 
   if (!user || user.role !== 'Faculty') {
-    return <p>Access denied. This page is for faculty members only.</p>;
+    return (
+        <div className="flex flex-col items-center justify-center h-full p-10">
+            <Edit3 className="w-16 h-16 mb-4 text-destructive" />
+            <h2 className="text-2xl font-semibold mb-2">Access Denied</h2>
+            <p className="text-muted-foreground">This page is for faculty members only.</p>
+        </div>
+    );
   }
 
   const selectionMade = !!(selectedSemester && selectedSection && selectedSubject);
@@ -217,7 +230,7 @@ export default function MarksEntryPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Select Class and Subject</CardTitle>
-          <CardDescription>Choose the semester, section, and subject to enter or view marks.</CardDescription>
+          <CardDescription>Choose the semester, section, and subject to enter or view marks. Students must be 'Active' and have an assigned USN to appear.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
@@ -262,22 +275,22 @@ export default function MarksEntryPage() {
        {selectionMade && (
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>Enter Marks for {selectedSubject?.name} - Section {selectedSection}</CardTitle>
-            <CardDescription>Input marks for each student. Click 'Save All Marks' when done.</CardDescription>
+            <CardTitle>Enter Marks: {selectedSubject?.name} ({selectedSubject?.code}) - Sem {selectedSemester}, Sec {selectedSection}</CardTitle>
+            <CardDescription>Input marks for each student. Click 'Save All Marks' when done. Ensure USNs are correct as they link marks to students.</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
                  <div className="space-y-2">
                     <p className="text-center text-muted-foreground py-4">Loading student data...</p>
-                    {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+                    {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-md" />)}
                  </div>
             ) : studentsForEntry.length > 0 ? (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[120px]">USN</TableHead>
-                      <TableHead>Student Name</TableHead>
+                      <TableHead className="w-[120px] sticky left-0 bg-card z-10">USN</TableHead>
+                      <TableHead className="sticky left-[120px] bg-card z-10">Student Name</TableHead>
                       <TableHead className="text-center w-28">IA 1 (50)</TableHead>
                       <TableHead className="text-center w-28">IA 2 (50)</TableHead>
                       <TableHead className="text-center w-32">Assign 1 (20)</TableHead>
@@ -287,8 +300,8 @@ export default function MarksEntryPage() {
                   <TableBody>
                     {studentsForEntry.map((student) => (
                       <TableRow key={student.userId}>
-                        <TableCell className="font-mono text-xs">{student.admissionId}</TableCell>
-                        <TableCell className="font-medium">{student.fullName}</TableCell>
+                        <TableCell className="font-mono text-xs sticky left-0 bg-card z-10">{student.admissionId}</TableCell>
+                        <TableCell className="font-medium sticky left-[120px] bg-card z-10">{student.fullName}</TableCell>
                         {(['ia1_50', 'ia2_50', 'assignment1_20', 'assignment2_20'] as const).map(field => (
                           <TableCell key={field} className="px-1 py-1">
                             <Input
@@ -314,10 +327,12 @@ export default function MarksEntryPage() {
                 </div>
               </div>
             ) : (
-                 initialLoadAttempted && (
-                    <p className="text-center py-8 text-muted-foreground">
-                        No students found for this selection, or marks data is still loading.
-                    </p>
+                 initialLoadAttempted && ( // Show message only if load was attempted for the current selection
+                    <div className="text-center py-8 text-muted-foreground">
+                        <Users className="mx-auto h-12 w-12 mb-4" />
+                        <p className="text-lg">No active students found for this selection.</p>
+                        <p>Please ensure students are registered, approved by admin with a USN, and match the selected semester/section.</p>
+                    </div>
                  )
             )}
           </CardContent>
@@ -329,7 +344,7 @@ export default function MarksEntryPage() {
             <Card className="shadow-lg">
                 <CardHeader>
                     <CardTitle className="flex items-center"><BarChart className="mr-2 h-5 w-5 text-primary" /> Performance Summary</CardTitle>
-                    <CardDescription>Overall statistics for {selectedSubject?.name} - Section {selectedSection}.</CardDescription>
+                    <CardDescription>Overall statistics for {selectedSubject?.name} - Section {selectedSection}. (Based on currently displayed/entered marks)</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
@@ -358,14 +373,18 @@ export default function MarksEntryPage() {
             </Card>
        )}
 
-      {/* Initial state message */}
+      {/* Initial state message or if selections are cleared */}
        {!selectionMade && !isLoading && (
          <Alert className="mt-6 bg-accent/20 border-accent text-accent-foreground">
              <Info className="h-5 w-5 text-accent" />
             <AlertTitle>Select Class to Begin</AlertTitle>
-            <AlertDescription>Please select a semester, section, and subject above to view or enter marks.</AlertDescription>
+            <AlertDescription>Please select a semester, section, and subject above to view or enter marks for students.</AlertDescription>
         </Alert>
        )}
     </div>
   );
 }
+
+```
+  </change>
+  <

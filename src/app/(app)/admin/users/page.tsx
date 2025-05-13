@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { User, UserStatus, StudentProfile } from '@/types';
+import type { User, UserStatus } from '@/types'; // Removed StudentProfile as it's not directly used here
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fetchAllUsersAction, updateUserStatusAction } from '@/actions/profile-actions';
@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from '@/lib/utils';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -51,7 +51,7 @@ export default function AdminUsersPage() {
   useEffect(() => {
     loadUsers(activeTab);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, activeTab, toast]);
+  }, [user, activeTab]); // Removed toast from deps, as it's stable
 
   const handleOpenUsnModal = (userToApprove: User) => {
     setSelectedUserForApproval(userToApprove);
@@ -64,15 +64,15 @@ export default function AdminUsersPage() {
       toast({ title: "Error", description: "Admission ID (USN) is required.", variant: "destructive" });
       return;
     }
-    setIsLoading(true);
+    setIsLoading(true); // Indicate loading for the specific action
     setIsUsnModalOpen(false);
     try {
-        const success = await updateUserStatusAction(selectedUserForApproval.id, 'Active', admissionIdInput.trim());
+        const success = await updateUserStatusAction(selectedUserForApproval.id, 'Active', admissionIdInput.trim().toUpperCase());
         if (success) {
-            toast({ title: "Student Approved", description: `${selectedUserForApproval.name}'s account is now Active with USN: ${admissionIdInput.trim()}.`, className: "bg-success text-success-foreground" });
+            toast({ title: "Student Approved", description: `${selectedUserForApproval.name}'s account is now Active with USN: ${admissionIdInput.trim().toUpperCase()}.`, className: "bg-success text-success-foreground" });
             loadUsers(activeTab); 
         } else {
-            toast({ title: "Approval Failed", description: `Could not approve ${selectedUserForApproval.name}.`, variant: "destructive" });
+            toast({ title: "Approval Failed", description: `Could not approve ${selectedUserForApproval.name}. The user status might not have changed, or the USN update failed.`, variant: "destructive" });
         }
     } catch (error) {
         console.error("Error approving student:", error);
@@ -80,20 +80,23 @@ export default function AdminUsersPage() {
     } finally {
         setSelectedUserForApproval(null);
         setAdmissionIdInput("");
-        setIsLoading(false);
+        setIsLoading(false); // Stop loading indicator
     }
   };
 
 
   const handleUpdateStatus = async (targetUser: User, newStatus: UserStatus) => {
+    // If approving a 'PendingApproval' student to 'Active', trigger USN modal
     if (targetUser.role === 'Student' && newStatus === 'Active' && targetUser.status === 'PendingApproval') {
         handleOpenUsnModal(targetUser);
         return;
     }
 
+    // For other status changes (Reject, Disable, Activate non-student or already approved student)
     setIsLoading(true); 
     try {
-        const success = await updateUserStatusAction(targetUser.id, newStatus);
+        // Pass undefined for admissionId if not assigning/changing it
+        const success = await updateUserStatusAction(targetUser.id, newStatus, undefined);
         if (success) {
             toast({ title: "Status Updated", description: `${targetUser.name}'s status changed to ${newStatus}.`, className: "bg-success text-success-foreground" });
             loadUsers(activeTab); 
@@ -111,27 +114,27 @@ export default function AdminUsersPage() {
   const StatusBadge = ({ status }: { status: UserStatus }) => {
     let IconComponent = Hourglass;
     let variant: "default" | "secondary" | "destructive" | "outline" = "default";
-    let badgeClassName = ""; // Changed from `className` to avoid conflict
+    let badgeClassName = ""; 
 
     switch (status) {
         case 'Active':
             IconComponent = CheckCircle;
-            variant = "default";
+            variant = "default"; // Will use theme's default (often primary if not overridden by custom class)
             badgeClassName = "bg-success text-success-foreground hover:bg-success/90";
             break;
         case 'PendingApproval':
             IconComponent = Hourglass;
-            variant = "default";
+            variant = "default"; // Using default, but custom class makes it yellow
             badgeClassName = "bg-warning text-warning-foreground hover:bg-warning/90";
             break;
         case 'Rejected':
         case 'Disabled':
             IconComponent = XCircle;
-            variant = "destructive";
+            variant = "destructive"; // Uses theme's destructive
             break;
         default:
             IconComponent = Hourglass; 
-            variant = "secondary";
+            variant = "secondary"; // Uses theme's secondary
     }
     return (
       <Badge variant={variant} className={cn("capitalize", badgeClassName)}>
@@ -143,14 +146,20 @@ export default function AdminUsersPage() {
 
 
   if (!user || user.role !== 'Admin') {
-    return <p>Access denied. This page is for administrators only.</p>;
+    return (
+         <div className="flex flex-col items-center justify-center h-full p-10">
+            <ShieldCheck className="w-16 h-16 mb-4 text-destructive" />
+            <h2 className="text-2xl font-semibold mb-2">Access Denied</h2>
+            <p className="text-muted-foreground">This page is for administrators only.</p>
+        </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold flex items-center"><ShieldCheck className="mr-2 h-8 w-8 text-primary" /> User Management</h1>
-        <Button disabled> {/* TODO: Implement add user functionality */}
+        <Button disabled> {/* TODO: Implement add user functionality via a modal/form */}
           <UserPlus className="mr-2 h-4 w-4" /> Add New User (Coming Soon)
         </Button>
       </div>
@@ -158,20 +167,20 @@ export default function AdminUsersPage() {
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as UserStatus | 'all')}>
         <TabsList className="grid w-full grid-cols-3 md:grid-cols-5">
           <TabsTrigger value="all">All Users</TabsTrigger>
-          <TabsTrigger value="PendingApproval">Pending</TabsTrigger>
-          <TabsTrigger value="Active">Active</TabsTrigger>
-          <TabsTrigger value="Rejected">Rejected</TabsTrigger>
-          <TabsTrigger value="Disabled">Disabled</TabsTrigger>
+          <TabsTrigger value="PendingApproval">Pending ({allUsers.filter(u=>u.status === 'PendingApproval').length})</TabsTrigger>
+          <TabsTrigger value="Active">Active ({allUsers.filter(u=>u.status === 'Active').length})</TabsTrigger>
+          <TabsTrigger value="Rejected">Rejected ({allUsers.filter(u=>u.status === 'Rejected').length})</TabsTrigger>
+          <TabsTrigger value="Disabled">Disabled ({allUsers.filter(u=>u.status === 'Disabled').length})</TabsTrigger>
         </TabsList>
       </Tabs>
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>User List ({allUsers.length})</CardTitle>
-          <CardDescription>Manage user accounts, roles, and statuses.</CardDescription>
+          <CardTitle>User List ({activeTab === 'all' ? allUsers.length : allUsers.filter(u=>u.status === activeTab).length})</CardTitle>
+          <CardDescription>Manage user accounts, roles, and statuses. Students require USN assignment upon approval.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && !isUsnModalOpen ? ( // Prevent table skeleton flashing when modal is open
+          {isLoading && !isUsnModalOpen ? ( 
             <Table>
                 <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                 <TableBody>
@@ -215,17 +224,17 @@ export default function AdminUsersPage() {
                                     </Button>
                                     </>
                                 )}
-                                {u.status === 'Active' && u.id !== user.id && ( // Admin cannot disable self
+                                {u.status === 'Active' && u.id !== user?.id && ( 
                                      <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleUpdateStatus(u, 'Disabled')} disabled={isLoading}>
                                         <XCircle className="mr-1 h-4 w-4"/> Disable
                                     </Button>
                                 )}
                                 {(u.status === 'Rejected' || u.status === 'Disabled') && (
                                      <Button variant="ghost" size="sm" className="text-success hover:bg-success/10 hover:text-success" onClick={() => handleUpdateStatus(u, 'Active')} disabled={isLoading}>
-                                        <CheckCircle className="mr-1 h-4 w-4"/> Activate
+                                        <CheckCircle className="mr-1 h-4 w-4"/> Re-Activate
                                     </Button>
                                 )}
-                                {/* <Button variant="outline" size="sm" disabled>Edit</Button> */}
+                                {/* Add Edit User button later if needed */}
                             </TableCell>
                         </TableRow>
                     ))}
@@ -238,12 +247,15 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={isUsnModalOpen} onOpenChange={setIsUsnModalOpen}>
+      <Dialog open={isUsnModalOpen} onOpenChange={(isOpen) => {
+          setIsUsnModalOpen(isOpen);
+          if (!isOpen) setSelectedUserForApproval(null); // Clear selection on close
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Approve Student & Assign USN</DialogTitle>
             <DialogDescription>
-              Assign an Admission ID (USN) to student <span className="font-semibold">{selectedUserForApproval?.name}</span> ({selectedUserForApproval?.email}).
+              To activate the student account for <span className="font-semibold">{selectedUserForApproval?.name}</span> ({selectedUserForApproval?.email}), please assign their unique Admission ID (USN).
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -254,17 +266,18 @@ export default function AdminUsersPage() {
               <Input
                 id="admissionId"
                 value={admissionIdInput}
-                onChange={(e) => setAdmissionIdInput(e.target.value.toUpperCase())}
+                onChange={(e) => setAdmissionIdInput(e.target.value.toUpperCase())} // Standardize to uppercase
                 placeholder="e.g., 1RN21CS001"
                 className="bg-background"
                 required
               />
+              <p className="text-xs text-muted-foreground">This ID will be used to link all academic records for the student.</p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => {setIsUsnModalOpen(false); setSelectedUserForApproval(null);}} disabled={isLoading}>Cancel</Button>
             <Button onClick={handleConfirmApprovalWithUsn} className="bg-success hover:bg-success/90 text-success-foreground" disabled={isLoading || !admissionIdInput.trim()}>
-              <CheckCircle className="mr-2 h-4 w-4" /> {isLoading ? 'Approving...' : 'Approve & Assign USN'}
+              <CheckCircle className="mr-2 h-4 w-4" /> {isLoading ? 'Processing...' : 'Approve & Assign USN'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -273,3 +286,7 @@ export default function AdminUsersPage() {
   );
 }
 
+```
+  </change>
+  <change>
+    <file>src/app/(app)/faculty/marks-entry
