@@ -51,14 +51,19 @@ export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 's
     let savedMooc: MoocCourse;
 
     if (moocData.id && moocData.id !== 'new') { // Update existing
-      const { id, ...dataToUpdate } = moocData;
+      const { id, ...dataToUpdateFromClient } = moocData;
+      // Ensure _id is not part of the $set operation.
+      // The `moocData` type `Omit`s `_id`, but runtime spread `...currentMooc` might re-introduce it.
+      const dataToUpdate = { ...dataToUpdateFromClient };
+      delete (dataToUpdate as any)._id; 
+
       const result = await moocsCollection.findOneAndUpdate(
         { _id: new ObjectId(id), studentId },
         { $set: dataToUpdate },
         { returnDocument: 'after' }
       );
       if (!result) throw new Error('MOOC not found or access denied.');
-      const updatedDoc = result as MoocCourse; // result is the document itself
+      const updatedDoc = result as MoocCourse; 
       const idStr = updatedDoc._id.toHexString();
       const { _id, ...rest } = updatedDoc;
       savedMooc = { ...rest, id: idStr, _id: idStr } as MoocCourse;
@@ -71,7 +76,6 @@ export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 's
       };
       const result = await moocsCollection.insertOne(newMoocInternal as MoocCourse);
       const insertedIdStr = result.insertedId.toHexString();
-      // Construct the object for return, ensuring no ObjectId
       savedMooc = { ...newMoocInternal, id: insertedIdStr, _id: insertedIdStr } as MoocCourse;
     }
     return savedMooc;
@@ -119,7 +123,12 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
     let savedProject: MiniProject;
 
     if (projectData.id && projectData.id !== 'new') { // Update existing
-      const { id, ...dataToUpdate } = projectData;
+      const { id, ...dataToUpdateFromClient } = projectData;
+      // Ensure _id is not part of the $set operation.
+      // The `projectData` type `Omit`s `_id`, but runtime spread `...currentProject` might re-introduce it.
+      const dataToUpdate = { ...dataToUpdateFromClient };
+      delete (dataToUpdate as any)._id;
+
       const result = await projectsCollection.findOneAndUpdate(
         { _id: new ObjectId(id), studentId },
         { $set: dataToUpdate },
@@ -136,7 +145,7 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
         ...projectData,
         studentId,
         submittedDate: new Date().toISOString(),
-        status: 'Pending', // Ensure new projects are always pending initially
+        status: 'Pending', 
       };
       const result = await projectsCollection.insertOne(newProjectInternal as MiniProject);
       const insertedIdStr = result.insertedId.toHexString();
@@ -144,12 +153,12 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
     }
      return savedProject;
   } catch (error) {
-    console.error('Error saving project:', error); // This logs the detailed error to server console
+    console.error('Error saving project:', error); 
     let errorMessage = 'Failed to save project.';
     if (error instanceof Error && error.message) {
       errorMessage += ` Details: ${error.message}`;
     }
-    throw new Error(errorMessage); // This error is shown to the client
+    throw new Error(errorMessage); 
   }
 }
 
@@ -203,7 +212,7 @@ export async function updateSubmissionStatusAction(
     const collection = type === 'project' ? await getProjectsCollection() : await getMoocsCollection();
     const result = await collection.updateOne(
       { _id: new ObjectId(submissionId) },
-      { $set: { status, remarks, facultyId } } // facultyId who approved/rejected
+      { $set: { status, remarks, facultyId } } 
     );
     return result.modifiedCount === 1;
   } catch (error) {
@@ -211,3 +220,4 @@ export async function updateSubmissionStatusAction(
     throw new Error(`Failed to update ${type} status.`);
   }
 }
+
