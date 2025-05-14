@@ -23,7 +23,16 @@ const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
   "1": [{ code: "MA101", name: "Applied Mathematics I" }, { code: "PH102", name: "Engineering Physics" }],
   "2": [{ code: "MA201", name: "Applied Mathematics II" }, { code: "CH202", name: "Engineering Chemistry" }],
   "3": [{ code: "CS301", name: "Data Structures" }, { code: "CS302", name: "Discrete Mathematics" }, { code: "EC303", name: "Analog Electronics" }, { code: "CS304", name: "Digital Design & Comp Org"}],
-  "4": [{ code: "CS401", name: "Algorithms" }, { code: "CS402", name: "Operating Systems" }, { code: "EC403", name: "Microcontrollers"} ],
+  "4": [
+    { code: "BCS401", name: "Analysis and Design of Algorithms" },
+    { code: "BCS402", name: "Microcontrollers" },
+    { code: "BCS403", name: "Database Management System" },
+    { code: "BCS405A", name: "Discrete Mathematical Structures" },
+    { code: "BCS405B", name: "Graph Theory" },
+    { code: "BIS402", name: "Advanced Java" },
+    { code: "BBOC407", name: "Biology for Engineers" },
+    { code: "BUHK408", name: "Universal Human Values" }
+  ],
   "5": [{ code: "CS501", name: "Database Management" }, { code: "CS502", name: "Computer Networks" }],
   "6": [{ code: "CS601", name: "Compiler Design" }, { code: "CS602", name: "Software Engineering" }],
   "7": [{ code: "CS701", name: "Artificial Intelligence" }, { code: "CS702", name: "Cryptography" }],
@@ -98,7 +107,7 @@ export default function MarksEntryPage() {
         setStudentsMarksEntries(transformedData);
 
         if (transformedData.length === 0) {
-            toast({title: "No Students Found", description: "No active students found for this class/section. Ensure student accounts are 'Active' and have assigned USNs.", variant: "default"});
+            toast({title: "No Students Found", description: "No active students found for this class/section. Ensure student accounts are 'Active' and have assigned USNs and correct current semester.", variant: "default"});
         }
       } catch (error) {
         console.error("Error fetching students/marks:", error);
@@ -150,12 +159,9 @@ export default function MarksEntryPage() {
     const newStudentId = `temp-${Date.now()}`; // Temporary unique ID for new row
     const newEntry: StudentMarksEntryData = {
       profile: { 
-        // This is a placeholder profile. A real implementation might involve searching for an existing student.
-        // For now, it allows manual USN and name entry.
-        // Ensure all StudentProfile fields are technically present, even if blank or default.
         id: newStudentId, 
         _id: newStudentId,
-        userId: newStudentId, // This will be the key for this row
+        userId: newStudentId, 
         admissionId: '', 
         fullName: '', 
         dateOfBirth: '', 
@@ -163,9 +169,20 @@ export default function MarksEntryPage() {
         address: '', 
         department: 'Not Specified', 
         year: Math.ceil(parseInt(selectedSemester)/2),
+        currentSemester: parseInt(selectedSemester),
         section: selectedSection, 
         parentName: '', 
         parentContact: '',
+        fatherName: '',
+        motherName: '',
+        gender: '',
+        bloodGroup: '',
+        aadharNumber: '',
+        category: '',
+        religion: '',
+        nationality: '',
+        sslcMarks: '',
+        pucMarks: '',
       },
       marks: {
         id: `${newStudentId}-${selectedSubject.code}-${selectedSemester}`,
@@ -211,16 +228,12 @@ export default function MarksEntryPage() {
     }
 
     setIsSaving(true);
-    // Filter out rows where USN or Student Name is empty for newly added rows
-    // And validate existing student rows
     const marksToSave = studentsMarksEntries.filter(entry => {
-      if (entry.profile.userId.startsWith('temp-')) { // New row
+      if (entry.profile.userId.startsWith('temp-')) { 
         if (entry.marks.usn.trim() === '' || entry.marks.studentName.trim() === ''){
             toast({title: "Validation Error", description: `USN and Name are required for new student: ${entry.marks.studentName || entry.marks.usn || 'Unnamed Row'}. Row skipped.`, variant: "destructive"})
             return false;
         }
-        // Further validation for new student entry could be if their USN already exists in the system
-        // This would require querying DB for existing USNs or student profiles.
       }
       return true; 
     }).map(entry => entry.marks);
@@ -235,12 +248,11 @@ export default function MarksEntryPage() {
       const result = await saveMultipleStudentMarksAction(marksToSave, user.id);
       if (result.success) {
         toast({ title: "Changes Saved", description: result.message, className: "bg-success text-success-foreground" });
-        loadStudentsAndMarks(); // Refresh data from DB
+        loadStudentsAndMarks(); 
       } else {
         toast({ title: "Save Failed", description: result.message || "Could not save marks.", variant: "destructive" });
          if (result.errors) {
             console.error("Save errors:", result.errors);
-            // Potentially display more detailed errors
         }
       }
     } catch (error: any) {
@@ -299,7 +311,7 @@ export default function MarksEntryPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Select Class and Subject</CardTitle>
-          <CardDescription>Choose the semester, section, and subject to enter or view marks. Students must be 'Active' and have an assigned USN to appear, or you can add them manually.</CardDescription>
+          <CardDescription>Choose the semester, section, and subject to enter or view marks. Students must be 'Active' and have correct 'Current Semester' & 'Section' in their profile to appear, or you can add them manually.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
@@ -382,7 +394,7 @@ export default function MarksEntryPage() {
                                 className="w-full text-xs bg-background h-9"
                                 value={entry.marks.usn}
                                 onChange={(e) => handleStudentDetailChange(entry.profile.userId, 'admissionId', e.target.value.toUpperCase())}
-                                disabled={isSaving || !entry.profile.userId.startsWith('temp-')} // Disable if not a new temp row
+                                disabled={isSaving || !entry.profile.userId.startsWith('temp-')} 
                                 placeholder="Enter USN"
                             />
                         </TableCell>
@@ -432,7 +444,8 @@ export default function MarksEntryPage() {
                     <div className="text-center py-8 text-muted-foreground">
                         <Users className="mx-auto h-12 w-12 mb-4" />
                         <p className="text-lg">No active students loaded for this selection.</p>
-                        <p>You can add students manually using the button above or check if students are approved with USNs.</p>
+                        <p>Ensure students are active, assigned a USN, and their 'Current Semester' & 'Section' match your selection.</p>
+                        <p>You can also add students manually using the button above.</p>
                     </div>
                  )
             )}

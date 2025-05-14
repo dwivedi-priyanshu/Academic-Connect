@@ -24,7 +24,16 @@ const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
   "1": [{ code: "MA101", name: "Applied Mathematics I" }, { code: "PH102", name: "Engineering Physics" }],
   "2": [{ code: "MA201", name: "Applied Mathematics II" }, { code: "CH202", name: "Engineering Chemistry" }],
   "3": [{ code: "CS301", name: "Data Structures" }, { code: "CS302", name: "Discrete Mathematics" }, { code: "EC303", name: "Analog Electronics" }, { code: "CS304", name: "Digital Design & Comp Org"}],
-  "4": [{ code: "CS401", name: "Algorithms" }, { code: "CS402", name: "Operating Systems" }, { code: "EC403", name: "Microcontrollers"} ],
+  "4": [
+    { code: "BCS401", name: "Analysis and Design of Algorithms" },
+    { code: "BCS402", name: "Microcontrollers" },
+    { code: "BCS403", name: "Database Management System" },
+    { code: "BCS405A", name: "Discrete Mathematical Structures" },
+    { code: "BCS405B", name: "Graph Theory" },
+    { code: "BIS402", name: "Advanced Java" },
+    { code: "BBOC407", name: "Biology for Engineers" },
+    { code: "BUHK408", name: "Universal Human Values" }
+  ],
   "5": [{ code: "CS501", name: "Database Management" }, { code: "CS502", name: "Computer Networks" }],
   "6": [{ code: "CS601", name: "Compiler Design" }, { code: "CS602", name: "Software Engineering" }],
   "7": [{ code: "CS701", name: "Artificial Intelligence" }, { code: "CS702", name: "Cryptography" }],
@@ -371,7 +380,7 @@ export default function PerformanceAnalysisPage() {
                             <XAxis dataKey="name" tickLine={false} axisLine={false} />
                             <YAxis tickLine={false} axisLine={false} domain={[0, 50]}/>
                             <Tooltip content={<ChartTooltipContent />} />
-                            <Legend content={<ChartLegendContent />} />
+                            <Legend />
                             <Bar dataKey="Average Score" fill="var(--color-averageScore)" radius={4} />
                           </BarChart>
                         </ChartContainer>
@@ -391,7 +400,7 @@ export default function PerformanceAnalysisPage() {
                             <XAxis dataKey="name" tickLine={false} axisLine={false} />
                             <YAxis tickLine={false} axisLine={false} domain={[0, 100]} unit="%"/>
                             <Tooltip content={<ChartTooltipContent />} />
-                             <Legend content={<ChartLegendContent />} />
+                             <Legend />
                             <Bar dataKey="Pass %" fill="var(--color-passPercentage)" radius={4} />
                           </BarChart>
                         </ChartContainer>
