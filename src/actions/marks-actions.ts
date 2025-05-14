@@ -52,47 +52,49 @@ export async function fetchStudentProfilesForMarksEntry(
     // 1. Fetch 'Active' student user IDs
     const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1 }).toArray();
     const activeStudentUserIds = activeStudentUsers
-        .map(u => u.id)
-        .filter(id => typeof id === 'string' && id.trim() !== ''); // Ensure IDs are valid, non-empty strings
+        .map(u => String(u.id || '').trim()) // Ensure IDs are valid, non-empty, trimmed strings
+        .filter(id => id); 
 
     if (activeStudentUserIds.length === 0) {
-        console.log("[MarksAction FetchProfiles] No 'Active' student user accounts found. Returning empty list.");
+        console.log("[MarksAction FetchProfiles] No 'Active' student user accounts found in the system. Returning empty list.");
         return [];
     }
-    console.log(`[MarksAction FetchProfiles] Found ${activeStudentUserIds.length} 'Active' student user IDs:`, activeStudentUserIds);
+    console.log(`[MarksAction FetchProfiles] Found ${activeStudentUserIds.length} 'Active' student user IDs:`, activeStudentUserIds.length < 10 ? activeStudentUserIds : `Count: ${activeStudentUserIds.length}`);
 
     // 2. Fetch student profiles matching year, section, and active user IDs
-    const studentProfilesCursor = studentProfilesCollection.find({
+    const studentProfileQuery: Filter<StudentProfile> = {
         year,
         section,
         userId: { $in: activeStudentUserIds }
-    });
+    };
+    console.log(`[MarksAction FetchProfiles] Querying student_profiles with filter:`, JSON.stringify(studentProfileQuery));
+    const studentProfilesCursor = studentProfilesCollection.find(studentProfileQuery);
     const studentProfilesArray = await studentProfilesCursor.toArray();
 
     if (studentProfilesArray.length === 0) {
-      console.log(`[MarksAction FetchProfiles] No active student profiles found for Year ${year}, Sec ${section} matching active users. Returning empty list.`);
+      console.log(`[MarksAction FetchProfiles] No active student profiles found for Year ${year}, Section ${section} using the ${activeStudentUserIds.length} active user IDs. Verify student profiles have correct year, section, and an active user account. Returning empty list.`);
       return [];
     }
     console.log(`[MarksAction FetchProfiles] Found ${studentProfilesArray.length} student profiles for the class:`, studentProfilesArray.map(p => ({ name: p.fullName, userId: p.userId, admissionId: p.admissionId, db_id: p._id.toHexString() })));
 
     const studentProfiles = studentProfilesArray.map(p => {
         const { _id, ...rest } = p;
-        return { ...rest, id: _id.toHexString(), _id: _id.toHexString(), userId: String(p.userId || '').trim() } as StudentProfile; // Ensure userId is a trimmed string
+        return { ...rest, id: _id.toHexString(), _id: _id.toHexString(), userId: String(p.userId || '').trim() } as StudentProfile;
     });
 
     const studentUserIdsFromProfiles = studentProfiles
         .map(p => p.userId)
-        .filter(id => id); // Filter out any potentially empty/null userIds from profiles
+        .filter(id => id); 
 
     if (studentUserIdsFromProfiles.length === 0) {
-        console.log(`[MarksAction FetchProfiles] No valid studentUserIds obtained from profiles for marks query. Returning profiles without marks.`);
+        console.log(`[MarksAction FetchProfiles] No valid studentUserIds obtained from profiles for marks query (this should not happen if profiles were found). Returning profiles without marks.`);
         return studentProfiles.map(profile => ({ profile, marks: undefined }));
     }
     console.log(`[MarksAction FetchProfiles] Querying marks for studentUserIds from profiles:`, studentUserIdsFromProfiles, `Semester: ${semester}, SubjectCode: ${subjectCode}`);
 
     // 3. Fetch marks for these specific students
     const marksQuery: Filter<SubjectMark> = {
-      studentId: { $in: studentUserIdsFromProfiles }, // studentId in marks collection should match userId in profiles
+      studentId: { $in: studentUserIdsFromProfiles }, 
       semester: semester,
       subjectCode: subjectCode,
     };
@@ -103,9 +105,10 @@ export async function fetchStudentProfilesForMarksEntry(
     const marksMap = new Map<string, SubjectMark>();
     existingMarksArray.forEach(markDoc => {
       const markWithStrId = { ...markDoc, _id: String(markDoc._id), id: String(markDoc._id) } as SubjectMark;
-      const keyForMap = String(markDoc.studentId || '').trim(); // Ensure studentId is a trimmed string
+      const keyForMap = String(markDoc.studentId || '').trim(); 
       if (keyForMap) {
         marksMap.set(keyForMap, markWithStrId);
+        console.log(`[MarksAction FetchProfiles] Populating marksMap: key='${keyForMap}', subject='${markDoc.subjectCode}', ia1='${markDoc.ia1_50}'`);
       } else {
         console.warn(`[MarksAction FetchProfiles] Mark record skipped for map due to empty/invalid studentId: ${JSON.stringify(markDoc)}`);
       }
@@ -113,19 +116,18 @@ export async function fetchStudentProfilesForMarksEntry(
     console.log(`[MarksAction FetchProfiles] Marks map created. Size: ${marksMap.size}. Keys:`, Array.from(marksMap.keys()));
 
     const result = studentProfiles.map(profile => {
-      const keyForLookup = profile.userId; // Already ensured to be a trimmed string
+      const keyForLookup = profile.userId; 
       const foundMarks = marksMap.get(keyForLookup);
 
       if (foundMarks) {
-          console.log(`[MarksAction FetchProfiles] Mapped marks for profile.userId: '${keyForLookup}' (USN: ${profile.admissionId}, Name: ${profile.fullName})`);
+          console.log(`[MarksAction FetchProfiles] Successfully mapped marks for student profile.userId: '${keyForLookup}' (USN: ${profile.admissionId}, Name: ${profile.fullName})`);
       } else {
-          console.log(`[MarksAction FetchProfiles] NO marks mapped for profile.userId: '${keyForLookup}' (USN: ${profile.admissionId}, Name: ${profile.fullName}).`);
-          // Check if marks for this student *were* in the raw fetch, indicating a map key issue
+          console.log(`[MarksAction FetchProfiles] DID NOT map marks for student profile.userId: '${keyForLookup}' (USN: ${profile.admissionId}, Name: ${profile.fullName}).`);
           const markForThisStudentExistsInRawFetch = existingMarksArray.find(m => String(m.studentId || '').trim() === keyForLookup);
           if (markForThisStudentExistsInRawFetch) {
-              console.log(`[MarksAction FetchProfiles] ---> Problem: Marks for '${keyForLookup}' (USN: ${profile.admissionId}) WERE in existingMarksArray but NOT MAPPED. Raw markDoc.studentId was: '${String(markForThisStudentExistsInRawFetch.studentId || '').trim()}'. Map key for this mark was: '${String(markForThisStudentExistsInRawFetch.studentId || '').trim()}'`);
+              console.log(`[MarksAction FetchProfiles] ---> YES, marks for '${keyForLookup}' (USN: ${profile.admissionId}) *WERE* in existingMarksArray but NOT MAPPED. Raw markDoc.studentId was: '${String(markForThisStudentExistsInRawFetch.studentId || '').trim()}'. Map key for this mark was: '${String(markForThisStudentExistsInRawFetch.studentId || '').trim()}'`);
           } else {
-              console.log(`[MarksAction FetchProfiles] ---> OK: Marks for '${keyForLookup}' (USN: ${profile.admissionId}) were NOT in existingMarksArray. Expected if no marks entered.`);
+              console.log(`[MarksAction FetchProfiles] ---> NO, marks for '${keyForLookup}' (USN: ${profile.admissionId}) were *NOT* in existingMarksArray. Expected if no marks entered for this student/subject/semester combination.`);
           }
       }
       return {
@@ -182,6 +184,7 @@ export async function saveMultipleStudentMarksAction(
       const validEntry = validation.data;
       let studentUserIdToUse = String(validEntry.studentId || '').trim();
 
+      // Resolve temporary studentId to actual userId using USN if it's a manually added row
       if (studentUserIdToUse.startsWith('temp-')) {
         console.log(`[MarksAction SaveMarks] Attempting to resolve temporary ID for USN: ${validEntry.usn}`);
         const studentProfile = await studentProfilesCollection.findOne({ admissionId: validEntry.usn.toUpperCase() });
@@ -201,6 +204,7 @@ export async function saveMultipleStudentMarksAction(
           continue;
         }
       } else {
+         // For existing students, re-verify they are still active before saving marks
          const studentUser = await usersCollection.findOne({ id: studentUserIdToUse, status: 'Active' });
          if (!studentUser) {
             console.warn(`[MarksAction SaveMarks] User ${studentUserIdToUse} (USN: ${validEntry.usn}) is no longer active or not found. Skipping marks save.`);
@@ -210,11 +214,13 @@ export async function saveMultipleStudentMarksAction(
       }
 
 
+      // Composite key for marks for easier upsertion and uniqueness.
+      // This ensures one mark document per student, per subject, per semester.
       const markId = `${studentUserIdToUse}-${validEntry.subjectCode}-${validEntry.semester}`;
 
       const markDocument: SubjectMark = {
-        id: markId,
-        _id: markId,
+        id: markId, // Store the composite key also in 'id' field
+        _id: markId, // Use the composite key as MongoDB's _id
         studentId: studentUserIdToUse, 
         usn: validEntry.usn.toUpperCase(),
         studentName: validEntry.studentName,
@@ -229,7 +235,7 @@ export async function saveMultipleStudentMarksAction(
 
       operations.push({
         updateOne: {
-          filter: { _id: markId },
+          filter: { _id: markId }, // Query by the composite _id
           update: { $set: markDocument },
           upsert: true,
         },
@@ -280,21 +286,23 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
   // 1. Fetch 'Active' student user IDs
   const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1 }).toArray();
   const activeStudentUserIds = activeStudentUsers
-      .map(u => u.id)
-      .filter(id => typeof id === 'string' && id.trim() !== '');
+      .map(u => String(u.id || '').trim())
+      .filter(id => id);
 
   if (activeStudentUserIds.length === 0) {
     console.log("[MarksAction PA] No 'Active' student user accounts found. Returning empty marks array.");
     return [];
   }
-  console.log(`[MarksAction PA] Found ${activeStudentUserIds.length} 'Active' student user IDs:`, activeStudentUserIds);
+  console.log(`[MarksAction PA] Found ${activeStudentUserIds.length} 'Active' student user IDs:`, activeStudentUserIds.length < 10 ? activeStudentUserIds : `Count: ${activeStudentUserIds.length}`);
 
   // 2. Fetch student profiles matching year, section, and active user IDs
-  const studentProfilesCursor = studentProfilesCollection.find({
+  const studentProfileQuery: Filter<StudentProfile> = {
     year,
     section,
     userId: { $in: activeStudentUserIds }
-  });
+  };
+  console.log(`[MarksAction PA] Querying student_profiles with filter:`, JSON.stringify(studentProfileQuery));
+  const studentProfilesCursor = studentProfilesCollection.find(studentProfileQuery);
   const studentProfilesArray = await studentProfilesCursor.toArray();
 
   if (studentProfilesArray.length === 0) {
@@ -316,7 +324,7 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
 
   // 4. Fetch marks for these specific students
   const marksQuery: Filter<SubjectMark> = {
-    studentId: { $in: studentUserIdsFromProfiles }, // studentId in marks collection should match userId in profiles
+    studentId: { $in: studentUserIdsFromProfiles }, 
     semester: semester,
     subjectCode: subjectCode,
   };
@@ -326,7 +334,6 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
 
   return fetchedMarks.map(doc => {
     const { _id, ...rest } = doc;
-    // Ensure 'id' and '_id' on the returned object are the string version of the database _id
     const idStr = String(_id);
     return { ...rest, id: idStr, _id: idStr, studentId: String(doc.studentId || '').trim() } as SubjectMark;
   });
