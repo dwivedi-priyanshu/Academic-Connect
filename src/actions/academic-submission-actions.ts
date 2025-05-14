@@ -1,3 +1,4 @@
+
 'use server';
 
 import { connectToDatabase } from '@/lib/mongodb';
@@ -76,7 +77,11 @@ export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 's
     return savedMooc;
   } catch (error) {
     console.error('Error saving MOOC:', error);
-    throw new Error('Failed to save MOOC.');
+    let errorMessage = 'Failed to save MOOC.';
+    if (error instanceof Error && error.message) {
+      errorMessage += ` Details: ${error.message}`;
+    }
+    throw new Error(errorMessage);
   }
 }
 
@@ -131,7 +136,7 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
         ...projectData,
         studentId,
         submittedDate: new Date().toISOString(),
-        status: 'Pending',
+        status: 'Pending', // Ensure new projects are always pending initially
       };
       const result = await projectsCollection.insertOne(newProjectInternal as MiniProject);
       const insertedIdStr = result.insertedId.toHexString();
@@ -139,8 +144,12 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
     }
      return savedProject;
   } catch (error) {
-    console.error('Error saving project:', error);
-    throw new Error('Failed to save project.');
+    console.error('Error saving project:', error); // This logs the detailed error to server console
+    let errorMessage = 'Failed to save project.';
+    if (error instanceof Error && error.message) {
+      errorMessage += ` Details: ${error.message}`;
+    }
+    throw new Error(errorMessage); // This error is shown to the client
   }
 }
 
