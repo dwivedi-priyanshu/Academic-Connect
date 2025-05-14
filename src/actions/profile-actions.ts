@@ -170,6 +170,7 @@ export async function fetchStudentsForFacultyAction(
   filters?: { year?: number; section?: string; department?: string; }
 ): Promise<StudentProfile[]> {
   try {
+    console.log(`[ProfileActions] Fetching students for faculty ${facultyId} with filters:`, JSON.stringify(filters));
     const studentProfilesCollection = await getStudentProfilesCollection();
     const query: Filter<StudentProfile> = {}; 
     
@@ -178,22 +179,36 @@ export async function fetchStudentsForFacultyAction(
     if (filters?.section) query.section = filters.section;
 
     const usersCollection = await getUsersCollection();
-    const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1 }).toArray();
-    const activeStudentUserIds = activeStudentUsers.map(u => u.id);
+    // Fetch users and project both _id and id to be safe, though 'id' (string) is primary.
+    const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1, _id: 1 }).toArray();
+    
+    console.log(`[ProfileActions] Found ${activeStudentUsers.length} total 'Active' student user accounts in the system.`);
+    
+    const activeStudentUserIds = activeStudentUsers
+        .map(u => u.id || u._id?.toHexString()) // Prefer string 'id', fallback to hex of '_id'
+        .filter(id => typeof id === 'string' && id.trim() !== ''); // Ensure IDs are valid strings
 
-    if(activeStudentUserIds.length === 0) return []; 
+    if(activeStudentUserIds.length === 0) {
+        console.log("[ProfileActions] No 'Active' student user accounts resulted in valid IDs. Returning empty list.");
+        return []; 
+    }
+    console.log("[ProfileActions] Active student user string IDs for profile query:", activeStudentUserIds);
 
     query.userId = { $in: activeStudentUserIds };
+    console.log("[ProfileActions] Final query for student_profiles:", JSON.stringify(query));
 
 
     const studentsArray = await studentProfilesCollection.find(query).toArray();
+    console.log(`[ProfileActions] Found ${studentsArray.length} student profiles matching the final query.`);
+    
     return studentsArray.map(s => {
         const idStr = s._id.toHexString();
         const { _id, ...rest } = s;
+        // Ensure userId from profile is what we expect (it should be string already as it's set from User.id)
         return { ...rest, id: idStr, _id: idStr, userId: s.userId } as StudentProfile; 
     });
   } catch (error) {
-    console.error('Error fetching students for faculty:', error);
+    console.error('[ProfileActions] Error fetching students for faculty:', error);
     throw new Error('Failed to fetch students.');
   }
 }
@@ -232,7 +247,7 @@ export async function fetchAllUsersAction(filters?: { role?: UserRole, status?: 
  */
 export async function createUserAction(
   userData: Pick<User, 'email' | 'name' | 'role'> & { passwordPlainText: string },
-  studentProfileDetails?: Partial<Omit<StudentProfile, 'userId' | 'id' | '_id' | 'fullName'>> & { fullName?: string, admissionId?: string }
+  studentProfileDetails?: Partial<Omit<StudentProfile, 'userId' | 'id' | '_id' | 'fullName'>> & { fullName?: string, admissionId?: string, avatar?: string; }
 ): Promise<{ user: User; studentProfile?: StudentProfile } | null> {
   const usersCollection = await getUsersCollection();
   const studentProfilesCollection = await getStudentProfilesCollection();
@@ -255,9 +270,10 @@ export async function createUserAction(
     name: userData.name,
     role: userData.role,
     password: userData.passwordPlainText, 
-    avatar: `https://placehold.co/100x100.png?text=${userData.name.substring(0,1)}`, // placeholder
+    avatar: studentProfileDetails?.avatar || `https://placehold.co/100x100.png?text=${userData.name.substring(0,1)}`, 
     status: initialStatus, 
   };
+  (userDocumentToInsert as User).id = userIdStr; // Explicitly add string id field
 
   const insertResult = await usersCollection.insertOne(userDocumentToInsert as User);
   if (!insertResult.insertedId) {
@@ -280,11 +296,13 @@ export async function createUserAction(
     const studentProfileObjectId = new ObjectId();
     const studentProfileIdStr = studentProfileObjectId.toHexString();
     
-    const studentProfileDocumentToInsert: Omit<StudentProfile, 'id' | '_id'> & { _id: ObjectId } = {
+    const studentProfileDocumentToInsert: Omit<StudentProfile, 'id' | '_id'> & { _id: ObjectId, id:string; avatar?: string; } = {
       _id: studentProfileObjectId,
+      id: studentProfileIdStr, // Add string id
       userId: createdUser.id, 
       admissionId: studentProfileDetails?.admissionId || `TEMP-${Date.now().toString().slice(-6)}`, 
       fullName: studentProfileDetails?.fullName || createdUser.name,
+      avatar: studentProfileDetails?.avatar || createdUser.avatar, // Carry over avatar
       dateOfBirth: studentProfileDetails?.dateOfBirth || '', 
       contactNumber: studentProfileDetails?.contactNumber || '', 
       address: studentProfileDetails?.address || '', 
@@ -314,50 +332,10 @@ export async function createUserAction(
     const { _id, ...restOfProfileDoc } = studentProfileDocumentToInsert; 
     createdStudentProfile = {
       ...restOfProfileDoc, 
-      id: studentProfileIdStr,
+      id: studentProfileIdStr, // Ensure string id is primary
       _id: studentProfileIdStr, 
     } as StudentProfile;
   }
 
   return { user: createdUser, studentProfile: createdStudentProfile };
 }
-
-// The following is client-side code and should not be in a 'use server' file.
-// It was moved to src/app/(app)/admin/users/page.tsx
-/*
-export async function handleConfirmApprovalWithUsnClient(
-    selectedUserForApproval: User | null,
-    admissionIdInput: string,
-    toast: Function, // Consider a more specific type for toast if available
-    loadUsers: (tab: any) => void, // Consider a more specific type for loadUsers and tab
-    activeTab: any, // Consider a more specific type
-    setIsLoading: (loading: boolean) => void,
-    setIsUsnModalOpen: (open: boolean) => void,
-    setSelectedUserForApprovalClient: (user: User | null) => void
-) {
-    if (!selectedUserForApproval || !admissionIdInput.trim()) {
-        toast({ title: "Error", description: "Admission ID (USN) is required.", variant: "destructive" });
-        return;
-    }
-    setIsLoading(true);
-    setIsUsnModalOpen(false);
-    try {
-        const success = await updateUserStatusAction(selectedUserForApproval.id, 'Active', admissionIdInput.trim().toUpperCase());
-        if (success) {
-            toast({ title: "Student Approved", description: `${selectedUserForApproval.name}'s account is now Active with USN: ${admissionIdInput.trim().toUpperCase()}.`, className: "bg-success text-success-foreground" });
-            loadUsers(activeTab);
-        } else {
-            toast({ title: "Approval Failed", description: `Could not approve ${selectedUserForApproval.name}. The user status might not have changed, or the USN update failed.`, variant: "destructive" });
-        }
-    } catch (error) {
-        console.error("Error approving student:", error);
-        toast({ title: "Error", description: `Failed to approve student: ${(error as Error).message}`, variant: "destructive" });
-    } finally {
-        setSelectedUserForApprovalClient(null);
-        // setAdmissionIdInput(""); // This state is local to the component
-        setIsLoading(false);
-    }
-}
-*/
-
-

@@ -35,35 +35,46 @@ export default function FacultyStudentsPage() {
 
   useEffect(() => {
     // Reset subordinate filters and data when semester changes
-    setSelectedSection(""); // Also reset section if semester changes, or make it conditional
-    setFilteredStudents([]);
+    setSelectedSection(""); 
     setAllStudentsFromSelection([]);
+    setFilteredStudents([]);
     setInitialLoadAttempted(false);
   }, [selectedSemester]);
 
   useEffect(() => {
-    if (user && user.role === 'Faculty' && selectedSemester && selectedSection) {
-      setIsLoading(true);
-      setInitialLoadAttempted(true);
-      const year = Math.ceil(parseInt(selectedSemester) / 2);
-      
-      fetchStudentsForFacultyAction(user.id, { year, section: selectedSection }).then(data => {
-        setAllStudentsFromSelection(data);
-        setFilteredStudents(data);
+    if (selectedSemester && selectedSection) { 
+      setInitialLoadAttempted(true); 
+      if (user && user.role === 'Faculty') {
+        setIsLoading(true);
+        const year = Math.ceil(parseInt(selectedSemester) / 2);
+
+        fetchStudentsForFacultyAction(user.id, { year, section: selectedSection })
+          .then(data => {
+            setAllStudentsFromSelection(data);
+            setFilteredStudents(data);
+            if (data.length === 0) {
+              toast({title: "No Students Found", description: "No active students found for the selected semester and section.", variant: "default"});
+            }
+          })
+          .catch(error => {
+              console.error("Error fetching students:", error);
+              toast({title: "Error Loading Students", description: (error as Error).message || "Could not load student list.", variant: "destructive"});
+          })
+          .finally(() => {
+              setIsLoading(false);
+          });
+      } else { 
+        setAllStudentsFromSelection([]);
+        setFilteredStudents([]);
         setIsLoading(false);
-      }).catch(error => {
-          console.error("Error fetching students:", error);
-          toast({title: "Error", description: "Could not load student list.", variant: "destructive"});
-          setIsLoading(false);
-      });
-    } else {
+      }
+    } else { 
       setAllStudentsFromSelection([]);
       setFilteredStudents([]);
       setIsLoading(false);
-      if (selectedSemester && selectedSection) {
-        setInitialLoadAttempted(true); 
-      }
+      setInitialLoadAttempted(false); 
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, selectedSemester, selectedSection, toast]);
 
   useEffect(() => {
@@ -73,7 +84,7 @@ export default function FacultyStudentsPage() {
       setFilteredStudents(
         allStudentsFromSelection.filter(student =>
           student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          student.admissionId.toLowerCase().includes(searchTerm.toLowerCase())
+          (student.admissionId && student.admissionId.toLowerCase().includes(searchTerm.toLowerCase()))
         )
       );
     }
@@ -128,11 +139,11 @@ export default function FacultyStudentsPage() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search within this list by name or USN..."
+                placeholder="Search by name or USN..."
                 className="pl-8 sm:w-1/2 md:w-1/3 bg-background"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                disabled={isLoading}
+                disabled={isLoading || allStudentsFromSelection.length === 0}
               />
             </div>
           </CardHeader>
@@ -182,7 +193,7 @@ export default function FacultyStudentsPage() {
                     <TableRow key={student.userId}>
                       <TableCell>
                         <Avatar className="h-9 w-9">
-                          <AvatarImage src={`https://picsum.photos/seed/${student.userId}/40/40`} alt={student.fullName} data-ai-hint="person face" />
+                          <AvatarImage src={student.avatar || `https://placehold.co/40x40.png?text=${student.fullName.substring(0,1)}`} alt={student.fullName} data-ai-hint="person face" />
                           <AvatarFallback>{student.fullName.substring(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
                       </TableCell>
@@ -204,7 +215,7 @@ export default function FacultyStudentsPage() {
               </Table>
             ) : (
               <p className="text-center py-8 text-muted-foreground">
-                {initialLoadAttempted ? "No students found matching your criteria." : "Select options to load students."}
+                {initialLoadAttempted ? "No students found matching your criteria for the selected semester and section." : "Make a selection to load students."}
               </p>
             )}
           </CardContent>
