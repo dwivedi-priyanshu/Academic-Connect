@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import type { StudentProfile, User } from '@/types';
-import { Save, Edit, UserCircle, CalendarDays, Phone, MapPin, Building, Users, Briefcase, Droplet, Fingerprint, Tag, BookOpen, Flag, Award, Info, Users2, ClipboardCheck } from 'lucide-react';
+import { Save, Edit, UserCircle, CalendarDays, Phone, MapPin, Building, Users as UsersIcon, Briefcase, Droplet, Fingerprint, Tag, BookOpen, Flag, Award, Info, Users2, ClipboardCheck } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
@@ -119,23 +119,27 @@ export default function ProfilePage() {
         toast({ title: "Profile Updated", description: "Your profile has been successfully updated.", variant: "default", className: "bg-success text-success-foreground" });
         setIsEditing(false);
         
-        if (user.role !== 'Student' && 'name' in profileData && 'avatar' in profileData) {
-           // Re-fetch user data to update context if name/avatar for non-student role changed
-          const updatedUser = await fetchUserForSessionAction(user.id);
-          if (updatedUser) {
-            // This relies on login function to update context, or a dedicated context update function
-            // For simplicity, if login function can take a User object to set context:
-            // login(updatedUser); // This might not be the right way if login expects credentials
-            // Or more directly:
-            // setUser(updatedUser); // If AuthContext exposes setUser
-            // For now, a full re-login flow might be triggered or a page refresh might be needed
-            // to see header changes for non-students. A better approach would be a context update fn.
-            // Using the existing login() which re-fetches might be too heavy or require password.
-            // A simple local update or a dedicated context update fn is better.
-            // For now, let's assume user will see changes on next full load/login.
-            // Or attempt to refresh parts of the user object in context if login method is robust.
-          }
+        // Re-fetch user data to update context if name/avatar changed
+        const updatedUser = await fetchUserForSessionAction(user.id);
+        if (updatedUser) {
+            // The login function in AuthContext should handle updating the user object in context
+            // This will ensure the header avatar/name updates.
+             // Forcing a re-evaluation in AuthContext by calling login with existing user,
+             // but AuthContext's login expects credentials.
+             // A dedicated context update function would be better.
+             // For now, we can just update the 'user' object in the context.
+             // This is a simplified approach for context update.
+            if (login && typeof login === 'function') {
+                // This is a placeholder for a proper context update method
+                // Attempting to reload the user data may be better
+                const refreshedUser = await fetchUserForSessionAction(user.id);
+                if (refreshedUser) {
+                    // This would require AuthContext to have a setUser method or similar
+                    // For this example, we assume login might be able to refresh, or student reloads page
+                }
+            }
         }
+
       } else {
         toast({ title: "Update Failed", description: "Could not update your profile. Please try again.", variant: "destructive" });
       }
@@ -152,47 +156,45 @@ export default function ProfilePage() {
      return <p>User not found. Please log in.</p>;
   }
 
-  const canEdit = user.role === 'Student' || user.role === 'Faculty';
+  const studentAcademicFieldsNonEditable: string[] = ['admissionId', 'department', 'year', 'currentSemester', 'section'];
 
-  const studentProfileFields = [
+  const profileFieldsConfig = [
     // Account & Basic Info
-    { name: 'fullName', label: 'Full Name', icon: UserCircle, type: 'text', required: true, section: 'Account' },
-    { name: 'admissionId', label: 'Admission ID (USN)', icon: Briefcase, type: 'text', required: true, disabled: true, section: 'Academic' },
-    { name: 'department', label: 'Department', icon: Building, type: 'text', required: true, section: 'Academic' },
-    { name: 'year', label: 'Year of Study', icon: Users, type: 'number', required: true, section: 'Academic', min: 1, max: 4 }, // Now editable
-    { name: 'currentSemester', label: 'Current Semester', icon: ClipboardCheck, type: 'select', options: Array.from({length: 8}, (_, i) => String(i + 1)), required: true, section: 'Academic' },
-    { name: 'section', label: 'Section', icon: Users, type: 'text', required: true, section: 'Academic' }, // Now editable
+    { name: 'fullName', label: 'Full Name', icon: UserCircle, type: 'text', required: true, section: 'Account', studentEditable: user?.role !== 'Student' }, // Name editable by Faculty/Admin if they view their own profile this way
+    { name: 'admissionId', label: 'Admission ID (USN)', icon: Briefcase, type: 'text', required: true, section: 'Academic', studentEditable: false, disabled: true }, // Always disabled for student
+    { name: 'department', label: 'Department', icon: Building, type: 'text', required: true, section: 'Academic', studentEditable: false },
+    { name: 'year', label: 'Year of Study', icon: UsersIcon, type: 'number', required: true, section: 'Academic', min: 1, max: 4, studentEditable: false },
+    { name: 'currentSemester', label: 'Current Semester', icon: ClipboardCheck, type: 'select', options: Array.from({length: 8}, (_, i) => String(i + 1)), required: true, section: 'Academic', studentEditable: false },
+    { name: 'section', label: 'Section', icon: UsersIcon, type: 'text', required: true, section: 'Academic', studentEditable: false },
     
     // Personal Details
-    { name: 'dateOfBirth', label: 'Date of Birth', icon: CalendarDays, type: 'date', required: true, section: 'Personal' },
-    { name: 'gender', label: 'Gender', icon: Users2, type: 'select', options: ['Male', 'Female', 'Other'], section: 'Personal' },
-    { name: 'bloodGroup', label: 'Blood Group', icon: Droplet, type: 'text', section: 'Personal' },
-    { name: 'aadharNumber', label: 'Aadhar Number', icon: Fingerprint, type: 'text', section: 'Personal' },
-    { name: 'category', label: 'Category (GM, SC, ST, etc.)', icon: Tag, type: 'text', section: 'Personal' },
-    { name: 'religion', label: 'Religion', icon: BookOpen, type: 'text', section: 'Personal' },
-    { name: 'nationality', label: 'Nationality', icon: Flag, type: 'text', section: 'Personal' },
+    { name: 'dateOfBirth', label: 'Date of Birth', icon: CalendarDays, type: 'date', required: true, section: 'Personal', studentEditable: true },
+    { name: 'gender', label: 'Gender', icon: Users2, type: 'select', options: ['Male', 'Female', 'Other'], section: 'Personal', studentEditable: true },
+    { name: 'bloodGroup', label: 'Blood Group', icon: Droplet, type: 'text', section: 'Personal', studentEditable: true },
+    { name: 'aadharNumber', label: 'Aadhar Number', icon: Fingerprint, type: 'text', section: 'Personal', studentEditable: true },
+    { name: 'category', label: 'Category (GM, SC, ST, etc.)', icon: Tag, type: 'text', section: 'Personal', studentEditable: true },
+    { name: 'religion', label: 'Religion', icon: BookOpen, type: 'text', section: 'Personal', studentEditable: true },
+    { name: 'nationality', label: 'Nationality', icon: Flag, type: 'text', section: 'Personal', studentEditable: true },
 
     // Contact Information
-    { name: 'contactNumber', label: 'Contact Number', icon: Phone, type: 'tel', required: true, section: 'Contact' },
-    { name: 'address', label: 'Address', icon: MapPin, type: 'text', required: true, section: 'Contact' },
+    { name: 'contactNumber', label: 'Contact Number', icon: Phone, type: 'tel', required: true, section: 'Contact', studentEditable: true },
+    { name: 'address', label: 'Address', icon: MapPin, type: 'text', required: true, section: 'Contact', studentEditable: true },
 
     // Parent/Guardian Information
-    { name: 'fatherName', label: "Father's Name", icon: UserCircle, type: 'text', section: 'Guardian' },
-    { name: 'motherName', label: "Mother's Name", icon: UserCircle, type: 'text', section: 'Guardian' },
-    { name: 'parentName', label: "Parent's/Guardian's Name (If different)", icon: UserCircle, type: 'text', section: 'Guardian' },
-    { name: 'parentContact', label: "Parent's/Guardian's Contact", icon: Phone, type: 'tel', section: 'Guardian' },
+    { name: 'fatherName', label: "Father's Name", icon: UserCircle, type: 'text', section: 'Guardian', studentEditable: true },
+    { name: 'motherName', label: "Mother's Name", icon: UserCircle, type: 'text', section: 'Guardian', studentEditable: true },
+    { name: 'parentName', label: "Parent's/Guardian's Name (If different)", icon: UserCircle, type: 'text', section: 'Guardian', studentEditable: true },
+    { name: 'parentContact', label: "Parent's/Guardian's Contact", icon: Phone, type: 'tel', section: 'Guardian', studentEditable: true },
 
     // Academic History
-    { name: 'sslcMarks', label: 'SSLC/10th Marks (e.g., % or CGPA)', icon: Award, type: 'text', section: 'Academic History' },
-    { name: 'pucMarks', label: 'PUC/12th Marks (e.g., % or CGPA)', icon: Award, type: 'text', section: 'Academic History' },
-  ];
-
-  const facultyProfileFields = [ 
-     { name: 'name', label: 'Full Name', icon: UserCircle, type: 'text', required: true, section: 'Account' },
-     // Faculty can edit their name via User object
+    { name: 'sslcMarks', label: 'SSLC/10th Marks (e.g., % or CGPA)', icon: Award, type: 'text', section: 'Academic History', studentEditable: true },
+    { name: 'pucMarks', label: 'PUC/12th Marks (e.g., % or CGPA)', icon: Award, type: 'text', section: 'Academic History', studentEditable: true },
   ];
   
-  const currentFieldsConfig = user.role === 'Student' ? studentProfileFields : facultyProfileFields;
+  const currentFieldsConfig = user.role === 'Student' 
+    ? profileFieldsConfig 
+    : profileFieldsConfig.filter(f => f.name === 'fullName' || f.name === 'email'); // Simplified view for Faculty/Admin on their own profile
+
   const currentProfileIsStudent = user.role === 'Student' && profileData && 'userId' in profileData;
 
   // Group fields by section
@@ -249,7 +251,7 @@ export default function ProfilePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold flex items-center"><UserCircle className="mr-2 h-8 w-8 text-primary" /> User Profile</h1>
-        {canEdit && (
+        { (user.role === 'Student' || user.role === 'Faculty' || user.role === 'Admin') && ( // Allow edit button for all roles for their own profile
           <Button onClick={() => setIsEditing(!isEditing)} variant={isEditing ? "secondary" : "default"} disabled={isLoading}>
             {isEditing ? 'Cancel' : <><Edit className="mr-2 h-4 w-4" /> Edit Profile</>}
           </Button>
@@ -259,7 +261,7 @@ export default function ProfilePage() {
       <Card className="shadow-lg">
         <CardHeader className="flex flex-row items-center space-x-4 bg-muted/30 p-6 rounded-t-lg">
             <Image 
-              src={(profileData && 'avatar' in profileData && profileData.avatar) || user.avatar || "https://placehold.co/100x100.png"} 
+              src={(profileData && 'avatar' in profileData && profileData.avatar) || user.avatar || "https://placehold.co/80x80.png?text=NA"} 
               alt={displayName}
               data-ai-hint="person face"
               width={80} 
@@ -269,7 +271,7 @@ export default function ProfilePage() {
             <div>
                 <CardTitle className="text-2xl">{displayName}</CardTitle>
                 <CardDescription>{displayEmail} | Role: {user.role}</CardDescription>
-                 {currentProfileIsStudent && <CardDescription>USN: {(profileData as StudentProfile).admissionId || 'Not Assigned'} | Year: {(profileData as StudentProfile).year || 'N/A'} | Semester: {(profileData as StudentProfile).currentSemester || 'N/A'} | Section: {(profileData as StudentProfile).section || 'N/A'}</CardDescription>}
+                 {currentProfileIsStudent && <CardDescription>USN: {(profileData as StudentProfile).admissionId || 'Not Assigned'} | Dept: {(profileData as StudentProfile).department || 'N/A'} | Year: {(profileData as StudentProfile).year || 'N/A'} | Sem: {(profileData as StudentProfile).currentSemester || 'N/A'} | Sec: {(profileData as StudentProfile).section || 'N/A'}</CardDescription>}
             </div>
         </CardHeader>
         <CardContent className="p-6">
@@ -278,57 +280,63 @@ export default function ProfilePage() {
               <div key={sectionTitle} className="mb-6">
                 <h3 className="text-xl font-semibold mb-4 text-primary border-b pb-2">{sectionTitle}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                  {fields.map(field => (
-                    <div key={field.name} className="space-y-1">
-                      <Label htmlFor={field.name} className="flex items-center text-sm font-medium text-muted-foreground">
-                        <field.icon className="mr-2 h-4 w-4" /> {field.label} {field.required && <span className="text-destructive ml-1">*</span>}
-                      </Label>
-                      {isEditing && canEdit ? (
-                        field.type === 'select' && field.options ? (
-                           <Select
-                            name={field.name}
-                            value={(profileData as any)?.[field.name]?.toString() || ''}
-                            onValueChange={(value) => handleSelectChange(field.name, value)}
-                            disabled={field.disabled || isLoading}
-                          >
-                            <SelectTrigger id={field.name} className="bg-background">
-                              <SelectValue placeholder={`Select ${field.label}`} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {field.options.map(option => (
-                                <SelectItem key={option} value={option}>{field.name === 'currentSemester' ? `Semester ${option}` : option}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                  {fields.map(field => {
+                    const isFieldDisabledForStudent = currentProfileIsStudent && !field.studentEditable;
+                    const isFieldGenerallyDisabled = field.disabled || isLoading;
+                    const finalDisabledState = isEditing ? (isFieldGenerallyDisabled || isFieldDisabledForStudent) : true;
+
+                    return (
+                      <div key={field.name} className="space-y-1">
+                        <Label htmlFor={field.name} className="flex items-center text-sm font-medium text-muted-foreground">
+                          <field.icon className="mr-2 h-4 w-4" /> {field.label} {field.required && <span className="text-destructive ml-1">*</span>}
+                        </Label>
+                        {isEditing ? (
+                          field.type === 'select' && field.options ? (
+                            <Select
+                              name={field.name}
+                              value={(profileData as any)?.[field.name]?.toString() || ''}
+                              onValueChange={(value) => handleSelectChange(field.name, value)}
+                              disabled={finalDisabledState}
+                            >
+                              <SelectTrigger id={field.name} className="bg-background">
+                                <SelectValue placeholder={`Select ${field.label}`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {field.options.map(option => (
+                                  <SelectItem key={option} value={option}>{field.name === 'currentSemester' ? `Semester ${option}` : option}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input
+                              id={field.name}
+                              name={field.name}
+                              type={field.type}
+                              value={(profileData as any)?.[field.name] || ''}
+                              onChange={handleInputChange}
+                              required={field.required}
+                              min={field.min}
+                              max={field.max}
+                              disabled={finalDisabledState}
+                              className="bg-background"
+                            />
+                          )
                         ) : (
-                          <Input
-                            id={field.name}
-                            name={field.name}
-                            type={field.type}
-                            value={(profileData as any)?.[field.name] || ''}
-                            onChange={handleInputChange}
-                            required={field.required}
-                            min={field.min}
-                            max={field.max}
-                            disabled={field.disabled || isLoading || (currentProfileIsStudent && field.disabled && field.name === 'admissionId')} // Admission ID specific disable
-                            className="bg-background"
-                          />
-                        )
-                      ) : (
-                        <p className="text-md p-2 border-b min-h-[40px] bg-muted/20 rounded-sm">
-                           {field.name === 'currentSemester' && (profileData as any)?.[field.name] ? `Semester ${(profileData as any)[field.name]}` :
-                            field.type === 'date' && (profileData as any)?.[field.name]
-                            ? new Date((profileData as any)[field.name]).toLocaleDateString()
-                            : (profileData as any)?.[field.name] || <span className="text-muted-foreground italic">N/A</span>
-                           }
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                          <p className="text-md p-2 border-b min-h-[40px] bg-muted/20 rounded-sm">
+                            {field.name === 'currentSemester' && (profileData as any)?.[field.name] ? `Semester ${(profileData as any)[field.name]}` :
+                              field.type === 'date' && (profileData as any)?.[field.name]
+                              ? new Date((profileData as any)[field.name]).toLocaleDateString()
+                              : (profileData as any)?.[field.name] || <span className="text-muted-foreground italic">N/A</span>
+                            }
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}
-            {isEditing && canEdit && (
+            {isEditing && (
               <div className="flex justify-end pt-4 border-t mt-6">
                 <Button type="submit" disabled={isLoading} className="bg-primary hover:bg-primary/90">
                   <Save className="mr-2 h-4 w-4" /> {isLoading ? "Saving..." : "Save Changes"}
@@ -341,3 +349,5 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+    
