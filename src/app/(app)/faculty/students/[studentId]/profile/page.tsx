@@ -14,6 +14,7 @@ import Image from 'next/image';
 import { fetchStudentFullProfileDataAction } from '@/actions/profile-actions';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
+import { Label } from '@/components/ui/label';
 
 
 export default function FacultyViewStudentProfilePage() {
@@ -144,7 +145,7 @@ export default function FacultyViewStudentProfilePage() {
         <Card className="lg:col-span-2 shadow-lg">
           <CardHeader className="flex flex-row items-center space-x-4 bg-muted/30 p-6 rounded-t-lg">
               <Image 
-                src={`https://picsum.photos/seed/${profile.userId}/80/80`} 
+                src={`https://placehold.co/80x80.png?text=${profile.fullName.substring(0,1)}`} 
                 alt={profile.fullName} 
                 width={80} 
                 height={80} 
