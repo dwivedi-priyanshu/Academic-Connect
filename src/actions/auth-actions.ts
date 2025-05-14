@@ -1,3 +1,4 @@
+
 'use server';
 
 import { connectToDatabase } from '@/lib/mongodb';
@@ -37,7 +38,7 @@ export async function loginUserAction(email: string, passwordPlainText: string, 
         email: 'admin@gmail.com',
         name: 'Admin User (Hardcoded)',
         role: 'Admin',
-        avatar: `https://picsum.photos/seed/hardcoded-admin/100/100`,
+        avatar: `https://placehold.co/100x100.png?text=Admin`, // placeholder
         status: 'Active',
       } as User;
     }
@@ -92,7 +93,7 @@ export async function fetchUserForSessionAction(userId: string): Promise<User | 
         email: 'admin@gmail.com',
         name: 'Admin User (Hardcoded)',
         role: 'Admin',
-        avatar: `https://picsum.photos/seed/hardcoded-admin/100/100`,
+        avatar: `https://placehold.co/100x100.png?text=Admin`, // placeholder
         status: 'Active',
       } as User;
     }
@@ -102,8 +103,6 @@ export async function fetchUserForSessionAction(userId: string): Promise<User | 
     if (ObjectId.isValid(userId)) {
         userDocument = await usersCollection.findOne({ _id: new ObjectId(userId) });
     } else {
-        // This case might be problematic if id field is not indexed or consistently used.
-        // For session restoration, relying on _id (ObjectId string) is safer.
         console.warn(`User ID ${userId} is not a valid ObjectId. Attempting to find by string id field.`);
         userDocument = await usersCollection.findOne({ id: userId } as any);
     }
@@ -115,11 +114,11 @@ export async function fetchUserForSessionAction(userId: string): Promise<User | 
         return null; 
       }
        const idStr = userDocument._id.toHexString();
-       const { _id, password, ...restOfUser } = userDocument; // Exclude original _id and password
+       const { _id, password, ...restOfUser } = userDocument; 
       return { 
         ...restOfUser,
         id: idStr,
-        _id: idStr, // Ensure _id passed to client is string
+        _id: idStr, 
       } as User;
     }
     return null;
@@ -157,16 +156,15 @@ export async function registerUserAction(
     name: userData.name,
     role: userData.role,
     password: userData.passwordPlainText, 
-    avatar: `https://picsum.photos/seed/${userIdStr}/100/100`,
+    avatar: `https://placehold.co/100x100.png?text=${userData.name.substring(0,1)}`, // placeholder
     status: userStatus,
   };
 
   await usersCollection.insertOne(userDocumentToInsert as any); 
   
-  // Construct user without the password field for returning
   const createdUser: User = {
     id: userIdStr,
-    _id: userIdStr, // Ensure _id is string
+    _id: userIdStr, 
     email: userDocumentToInsert.email,
     name: userDocumentToInsert.name,
     role: userDocumentToInsert.role,
@@ -179,9 +177,8 @@ export async function registerUserAction(
   if (userData.role === 'Student') {
     const studentProfileObjectId = new ObjectId();
     const studentProfileIdStr = studentProfileObjectId.toHexString();
-    const studentProfileDocumentToInsert = {
+    const studentProfileDocumentToInsert: Omit<StudentProfile, 'id' | '_id'> & { _id: ObjectId } = {
       _id: studentProfileObjectId,
-      id: studentProfileIdStr, 
       userId: createdUser.id,
       admissionId: `TEMP-${Date.now().toString().slice(-6)}`, 
       fullName: createdUser.name,
@@ -193,16 +190,28 @@ export async function registerUserAction(
       section: 'N/A',
       parentName: '', 
       parentContact: '', 
+      // Initialize new fields for StudentProfile
+      fatherName: '',
+      motherName: '',
+      gender: '',
+      bloodGroup: '',
+      aadharNumber: '',
+      category: '',
+      religion: '',
+      nationality: '',
+      sslcMarks: '',
+      pucMarks: '',
     };
     await studentProfilesCollection.insertOne(studentProfileDocumentToInsert as any);
 
     const { _id, ...restOfStudentProfile } = studentProfileDocumentToInsert;
     createdStudentProfile = {
       ...restOfStudentProfile,
-      id: studentProfileIdStr, // Already string
-      _id: studentProfileIdStr, // Ensure _id is string
+      id: studentProfileIdStr, 
+      _id: studentProfileIdStr, 
     } as StudentProfile;
   }
 
   return { user: createdUser, studentProfile: createdStudentProfile };
 }
+

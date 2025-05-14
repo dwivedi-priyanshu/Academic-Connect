@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { connectToDatabase } from '@/lib/mongodb';
@@ -146,8 +147,6 @@ export async function updateUserStatusAction(userId: string, newStatus: UserStat
       );
       if (studentProfileUpdateResult.matchedCount === 0) {
         console.warn(`No student profile found for user ${userToUpdate.id} to update admissionId. This might happen if profile creation failed during registration.`);
-        // Depending on desired behavior, you might want to throw an error or ensure profile exists
-        // For now, we consider user status update success as primary.
       }
       return userUpdateResult.modifiedCount === 1;
     }
@@ -182,7 +181,7 @@ export async function fetchStudentsForFacultyAction(
     const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1 }).toArray();
     const activeStudentUserIds = activeStudentUsers.map(u => u.id);
 
-    if(activeStudentUserIds.length === 0) return []; // No active students, so no profiles to fetch
+    if(activeStudentUserIds.length === 0) return []; 
 
     query.userId = { $in: activeStudentUserIds };
 
@@ -190,7 +189,6 @@ export async function fetchStudentsForFacultyAction(
     const studentsArray = await studentProfilesCollection.find(query).toArray();
     return studentsArray.map(s => {
         const idStr = s._id.toHexString();
-         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { _id, ...rest } = s;
         return { ...rest, id: idStr, _id: idStr, userId: s.userId } as StudentProfile; 
     });
@@ -215,7 +213,6 @@ export async function fetchAllUsersAction(filters?: { role?: UserRole, status?: 
     const usersArray = await usersCollection.find(query).toArray();
     return usersArray.map(u => {
         const idStr = u._id.toHexString();
-         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { _id, password, ...rest } = u; 
         return { ...rest, id: idStr, _id: idStr }; 
     });
@@ -258,7 +255,7 @@ export async function createUserAction(
     name: userData.name,
     role: userData.role,
     password: userData.passwordPlainText, 
-    avatar: `https://picsum.photos/seed/${userIdStr}/100/100`,
+    avatar: `https://placehold.co/100x100.png?text=${userData.name.substring(0,1)}`, // placeholder
     status: initialStatus, 
   };
 
@@ -283,10 +280,10 @@ export async function createUserAction(
     const studentProfileObjectId = new ObjectId();
     const studentProfileIdStr = studentProfileObjectId.toHexString();
     
-    const studentProfileDocumentToInsert: Omit<StudentProfile, 'id'> & { _id: ObjectId } = {
+    const studentProfileDocumentToInsert: Omit<StudentProfile, 'id' | '_id'> & { _id: ObjectId } = {
       _id: studentProfileObjectId,
       userId: createdUser.id, 
-      admissionId: studentProfileDetails?.admissionId || `TEMP-${Date.now().toString().slice(-6)}`, // Default temporary ID if not provided
+      admissionId: studentProfileDetails?.admissionId || `TEMP-${Date.now().toString().slice(-6)}`, 
       fullName: studentProfileDetails?.fullName || createdUser.name,
       dateOfBirth: studentProfileDetails?.dateOfBirth || '', 
       contactNumber: studentProfileDetails?.contactNumber || '', 
@@ -296,6 +293,17 @@ export async function createUserAction(
       section: studentProfileDetails?.section || 'N/A',
       parentName: studentProfileDetails?.parentName || '', 
       parentContact: studentProfileDetails?.parentContact || '', 
+      // Initialize new StudentProfile fields
+      fatherName: studentProfileDetails?.fatherName || '',
+      motherName: studentProfileDetails?.motherName || '',
+      gender: studentProfileDetails?.gender || '',
+      bloodGroup: studentProfileDetails?.bloodGroup || '',
+      aadharNumber: studentProfileDetails?.aadharNumber || '',
+      category: studentProfileDetails?.category || '',
+      religion: studentProfileDetails?.religion || '',
+      nationality: studentProfileDetails?.nationality || '',
+      sslcMarks: studentProfileDetails?.sslcMarks || '',
+      pucMarks: studentProfileDetails?.pucMarks || '',
     };
 
     const profileInsertResult = await studentProfilesCollection.insertOne(studentProfileDocumentToInsert as StudentProfile);
@@ -303,7 +311,6 @@ export async function createUserAction(
         throw new Error("Failed to insert student profile into database.");
     }
     
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...restOfProfileDoc } = studentProfileDocumentToInsert; 
     createdStudentProfile = {
       ...restOfProfileDoc, 
@@ -352,4 +359,5 @@ export async function handleConfirmApprovalWithUsnClient(
     }
 }
 */
+
 

@@ -1,4 +1,5 @@
 
+
 export type UserRole = 'Student' | 'Faculty' | 'Admin';
 export type UserStatus = 'PendingApproval' | 'Active' | 'Rejected' | 'Disabled';
 
@@ -25,8 +26,19 @@ export interface StudentProfile {
   department: string;
   year: number; 
   section: string; 
-  parentName: string;
+  parentName: string; // General guardian name
   parentContact: string;
+  // New fields for detailed personal information
+  fatherName?: string;
+  motherName?: string;
+  gender?: 'Male' | 'Female' | 'Other' | '';
+  bloodGroup?: string;
+  aadharNumber?: string;
+  category?: string; // GM, SC, ST, OBC, etc.
+  religion?: string;
+  nationality?: string;
+  sslcMarks?: string; // e.g., "90%" or "10 CGPA"
+  pucMarks?: string;  // e.g., "85%" or "9.5 CGPA"
 }
 
 export interface SubjectMark {
@@ -109,3 +121,4 @@ export const MOCK_USER_ADMIN_DATA: Omit<User, 'id' | '_id' | 'status'> = {
 
 // Student profiles in `student_profiles` collection would link via `userId`.
 // Example: { userId: "student123", admissionId: "1USN001", fullName: "John Doe", ... }
+
