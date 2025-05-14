@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import type { StudentProfile } from '@/types';
-import { UserCircle, CalendarDays, Phone, MapPin, Building, Users, Briefcase, ArrowLeft, ClipboardList, FileText, BookOpen, Droplet, Fingerprint, Tag, Flag, Award, Users2 } from 'lucide-react';
+import { UserCircle, CalendarDays, Phone, MapPin, Building, Users, Briefcase, ArrowLeft, ClipboardList, FileText, BookOpen, Droplet, Fingerprint, Tag, Flag, Award, Users2, ClipboardCheck } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -97,6 +97,7 @@ export default function FacultyViewStudentProfilePage() {
       { name: 'admissionId', label: 'Admission ID (USN)', icon: Briefcase },
       { name: 'department', label: 'Department', icon: Building },
       { name: 'year', label: 'Year of Study', icon: Users },
+      { name: 'currentSemester', label: 'Current Semester', icon: ClipboardCheck },
       { name: 'section', label: 'Section', icon: Users },
     ],
     'Personal Details': [
@@ -147,14 +148,14 @@ export default function FacultyViewStudentProfilePage() {
               <Image 
                 src={`https://placehold.co/80x80.png?text=${profile.fullName.substring(0,1)}`} 
                 alt={profile.fullName} 
+                data-ai-hint="person face"
                 width={80} 
                 height={80} 
                 className="rounded-full border-2 border-primary shadow-md"
-                data-ai-hint="person face"
               />
               <div>
                   <CardTitle className="text-2xl">{profile.fullName}</CardTitle>
-                  <CardDescription>{profile.admissionId} | {profile.department} - Year {profile.year}, Section {profile.section}</CardDescription>
+                  <CardDescription>{profile.admissionId} | {profile.department} - Year {profile.year}, Sem {profile.currentSemester || 'N/A'}, Sec {profile.section}</CardDescription>
                   {/* Display email from User object, assuming student user has email */}
                   {/* This might require fetching User object separately or including it in StudentProfile if not already */}
                   {/* For now, we'll assume student.email exists if it's part of User fetched for AuthContext */}
@@ -172,9 +173,11 @@ export default function FacultyViewStudentProfilePage() {
                         <field.icon className="mr-2 h-4 w-4" /> {field.label}
                       </Label>
                       <p className="text-md p-2 border-b min-h-[30px] bg-muted/10 rounded-sm">
-                        {field.type === 'date' && (profile as any)[field.name] 
-                          ? new Date((profile as any)[field.name]).toLocaleDateString() 
-                          : (profile as any)[field.name] || <span className="italic text-muted-foreground/70">N/A</span>}
+                        {field.name === 'currentSemester' && (profile as any)[field.name]
+                          ? `Semester ${(profile as any)[field.name]}`
+                          : field.type === 'date' && (profile as any)[field.name] 
+                            ? new Date((profile as any)[field.name]).toLocaleDateString() 
+                            : (profile as any)[field.name] || <span className="italic text-muted-foreground/70">N/A</span>}
                       </p>
                     </div>
                   ))}
@@ -205,4 +208,3 @@ export default function FacultyViewStudentProfilePage() {
     </div>
   );
 }
-

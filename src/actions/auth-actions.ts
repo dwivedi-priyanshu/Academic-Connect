@@ -187,6 +187,7 @@ export async function registerUserAction(
       address: '', 
       department: 'Not Assigned',
       year: 1,
+      currentSemester: 1, // Initialize currentSemester
       section: 'N/A',
       parentName: '', 
       parentContact: '', 
@@ -214,4 +215,3 @@ export async function registerUserAction(
 
   return { user: createdUser, studentProfile: createdStudentProfile };
 }
-

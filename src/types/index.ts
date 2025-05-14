@@ -25,6 +25,7 @@ export interface StudentProfile {
   address: string;
   department: string;
   year: number; 
+  currentSemester?: number; // New field for current semester
   section: string; 
   parentName: string; // General guardian name
   parentContact: string;

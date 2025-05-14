@@ -2,7 +2,7 @@
 
 'use server'; 
 
-import type { MongoClient } from 'mongodb';
+import type { MongoClient, ObjectId } from 'mongodb'; // Import ObjectId
 import { createUserAction } from '@/actions/profile-actions';
 import { connectToDatabase } from './mongodb';
 import { USERS_COLLECTION, STUDENT_PROFILES_COLLECTION } from './constants'; 
@@ -42,6 +42,7 @@ async function seedDatabase() {
           fullName: studentName, 
           department: 'Computer Science', 
           year: 3, 
+          currentSemester: 5, // Example: Year 3, Semester 5
           section: 'A',
           dateOfBirth: '2002-05-15',
           contactNumber: '9876543210',
@@ -81,6 +82,7 @@ async function seedDatabase() {
           fullName: studentName, 
           department: 'Computer Science', 
           year: 3, 
+          currentSemester: 5, // Example: Year 3, Semester 5
           section: 'A',
           dateOfBirth: '2002-05-15',
           contactNumber: '9876543210',
@@ -107,7 +109,7 @@ async function seedDatabase() {
         }
          // Ensure status is Active after creation for seeded user
         await usersCollection.updateOne(
-            { _id: new ObjectId(studentResult.user.id) },
+            { _id: new ObjectId(studentResult.user.id) }, // Use new ObjectId() here
             { $set: { status: 'Active' } }
         );
         console.log(`Student ${studentResult.user.name} status explicitly set to Active.`);
@@ -145,7 +147,7 @@ async function seedDatabase() {
         console.log(`Admin ${adminResult.user.name} created successfully with ID: ${adminResult.user.id} and status ${adminResult.user.status}`);
          // Ensure status is Active after creation for seeded user
         await usersCollection.updateOne(
-            { _id: new ObjectId(adminResult.user.id) },
+            { _id: new ObjectId(adminResult.user.id) }, // Use new ObjectId() here
             { $set: { status: 'Active' } }
         );
         console.log(`Admin ${adminResult.user.name} status explicitly set to Active.`);
@@ -180,7 +182,7 @@ async function seedDatabase() {
         if (facultyResult && facultyResult.user) {
             console.log(`Faculty ${facultyResult.user.name} created successfully with ID: ${facultyResult.user.id} and status ${facultyResult.user.status}`);
             await usersCollection.updateOne( // Ensure active
-                { _id: new ObjectId(facultyResult.user.id) },
+                { _id: new ObjectId(facultyResult.user.id) }, // Use new ObjectId() here
                 { $set: { status: 'Active' } }
             );
             console.log(`Faculty ${facultyResult.user.name} status explicitly set to Active.`);
@@ -217,4 +219,3 @@ if (require.main === module) {
 }
 
 export default seedDatabase;
-

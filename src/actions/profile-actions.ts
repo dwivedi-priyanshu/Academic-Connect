@@ -182,16 +182,25 @@ export async function fetchStudentsForFacultyAction(
     // 1. Fetch 'Active' student user IDs
     const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1 }).toArray();
     const activeStudentUserIds = activeStudentUsers
-        .map(u => u.id)
-        .filter(id => typeof id === 'string' && id.trim() !== ''); // Ensure IDs are valid, non-empty strings
+        .map(u => String(u.id || '').trim()) // Ensure IDs are valid, non-empty, trimmed strings
+        .filter(id => id); 
 
     if (activeStudentUserIds.length === 0) {
         console.log("[ProfileActions FFFA] No 'Active' student user accounts found. Returning empty list.");
         return [];
     }
-    console.log(`[ProfileActions FFFA] Found ${activeStudentUserIds.length} 'Active' student user IDs:`, activeStudentUserIds);
+    console.log(`[ProfileActions FFFA] Found ${activeStudentUserIds.length} 'Active' student user IDs:`, activeStudentUserIds.length < 10 ? activeStudentUserIds : `Count: ${activeStudentUserIds.length}`);
 
-    query.userId = { $in: activeStudentUserIds };
+    // If no specific filters are provided (e.g. year, section), we might want all active students.
+    // However, if the intent is to always filter by something, this logic might need adjustment.
+    // For now, if filters are present, userId is added to them. If no filters, it will fetch all profiles with active userIds.
+    if (Object.keys(filters || {}).length > 0) {
+        query.userId = { $in: activeStudentUserIds };
+    } else {
+        // If no filters like year/section are passed, fetch all active students
+        query.userId = { $in: activeStudentUserIds };
+    }
+    
     console.log("[ProfileActions FFFA] Final query for student_profiles:", JSON.stringify(query));
 
     const studentsArray = await studentProfilesCollection.find(query).toArray();
@@ -243,7 +252,7 @@ export async function fetchAllUsersAction(filters?: { role?: UserRole, status?: 
  */
 export async function createUserAction(
   userData: Pick<User, 'email' | 'name' | 'role'> & { passwordPlainText: string },
-  studentProfileDetails?: Partial<Omit<StudentProfile, 'userId' | 'id' | '_id' | 'fullName'>> & { fullName?: string, admissionId?: string; avatar?: string; }
+  studentProfileDetails?: Partial<Omit<StudentProfile, 'userId' | 'id' | '_id' | 'fullName'>> & { fullName?: string, admissionId?: string; avatar?: string; currentSemester?: number;}
 ): Promise<{ user: User; studentProfile?: StudentProfile } | null> {
   const usersCollection = await getUsersCollection();
   const studentProfilesCollection = await getStudentProfilesCollection();
@@ -304,6 +313,7 @@ export async function createUserAction(
       address: studentProfileDetails?.address || '', 
       department: studentProfileDetails?.department || 'Not Specified',
       year: studentProfileDetails?.year || 1,
+      currentSemester: studentProfileDetails?.currentSemester || 1, // Initialize currentSemester
       section: studentProfileDetails?.section || 'N/A',
       parentName: studentProfileDetails?.parentName || '', 
       parentContact: studentProfileDetails?.parentContact || '', 
@@ -335,6 +345,3 @@ export async function createUserAction(
 
   return { user: createdUser, studentProfile: createdStudentProfile };
 }
-
-
-    

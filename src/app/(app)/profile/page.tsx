@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import type { StudentProfile, User } from '@/types';
-import { Save, Edit, UserCircle, CalendarDays, Phone, MapPin, Building, Users, Briefcase, Droplet, Fingerprint, Tag, BookOpen, Flag, Award, Info, Users2 } from 'lucide-react';
+import { Save, Edit, UserCircle, CalendarDays, Phone, MapPin, Building, Users, Briefcase, Droplet, Fingerprint, Tag, BookOpen, Flag, Award, Info, Users2, ClipboardCheck } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import Image from 'next/image';
@@ -24,7 +24,8 @@ const initialStudentProfileData: StudentProfile = {
   contactNumber: '', 
   address: '', 
   department: '', 
-  year: 0, 
+  year: 1, 
+  currentSemester: 1,
   section: '', 
   parentName: '', 
   parentContact: '',
@@ -84,13 +85,18 @@ export default function ProfilePage() {
     const { name, value } = e.target;
     setProfileData(prev => {
       if (!prev) return null;
-      return { ...prev, [name]: name === 'year' && 'year' in prev ? parseInt(value) || 0 : value };
+      const updatedValue = (name === 'year' || name === 'currentSemester') && 'year' in prev ? parseInt(value) || 1 : value;
+      return { ...prev, [name]: updatedValue };
     });
   };
   
   const handleSelectChange = (name: string, value: string) => {
     setProfileData(prev => {
       if (!prev) return null;
+      // For 'currentSemester' and 'year', ensure it's a number
+      if ((name === 'currentSemester' || name === 'year') && prev && 'userId' in prev) {
+        return { ...prev, [name]: parseInt(value) || 1 };
+      }
       return { ...prev, [name]: value };
     });
   };
@@ -151,9 +157,10 @@ export default function ProfilePage() {
   const studentProfileFields = [
     // Account & Basic Info
     { name: 'fullName', label: 'Full Name', icon: UserCircle, type: 'text', required: true, section: 'Account' },
-    { name: 'admissionId', label: 'Admission ID (USN)', icon: Briefcase, type: 'text', required: true, disabled: true, section: 'Academic' }, // USN remains non-editable by student
-    { name: 'department', label: 'Department', icon: Building, type: 'text', required: true, section: 'Academic' }, // Now editable
-    { name: 'year', label: 'Year of Study', icon: Users, type: 'number', required: true, section: 'Academic' }, // Now editable
+    { name: 'admissionId', label: 'Admission ID (USN)', icon: Briefcase, type: 'text', required: true, disabled: true, section: 'Academic' },
+    { name: 'department', label: 'Department', icon: Building, type: 'text', required: true, section: 'Academic' },
+    { name: 'year', label: 'Year of Study', icon: Users, type: 'number', required: true, section: 'Academic', min: 1, max: 4 }, // Now editable
+    { name: 'currentSemester', label: 'Current Semester', icon: ClipboardCheck, type: 'select', options: Array.from({length: 8}, (_, i) => String(i + 1)), required: true, section: 'Academic' },
     { name: 'section', label: 'Section', icon: Users, type: 'text', required: true, section: 'Academic' }, // Now editable
     
     // Personal Details
@@ -254,15 +261,15 @@ export default function ProfilePage() {
             <Image 
               src={(profileData && 'avatar' in profileData && profileData.avatar) || user.avatar || "https://placehold.co/100x100.png"} 
               alt={displayName}
+              data-ai-hint="person face"
               width={80} 
               height={80} 
               className="rounded-full border-2 border-primary shadow-md"
-              data-ai-hint="person face"
             />
             <div>
                 <CardTitle className="text-2xl">{displayName}</CardTitle>
                 <CardDescription>{displayEmail} | Role: {user.role}</CardDescription>
-                 {currentProfileIsStudent && <CardDescription>USN: {(profileData as StudentProfile).admissionId || 'Not Assigned'}</CardDescription>}
+                 {currentProfileIsStudent && <CardDescription>USN: {(profileData as StudentProfile).admissionId || 'Not Assigned'} | Year: {(profileData as StudentProfile).year || 'N/A'} | Semester: {(profileData as StudentProfile).currentSemester || 'N/A'} | Section: {(profileData as StudentProfile).section || 'N/A'}</CardDescription>}
             </div>
         </CardHeader>
         <CardContent className="p-6">
@@ -280,7 +287,7 @@ export default function ProfilePage() {
                         field.type === 'select' && field.options ? (
                            <Select
                             name={field.name}
-                            value={(profileData as any)?.[field.name] || ''}
+                            value={(profileData as any)?.[field.name]?.toString() || ''}
                             onValueChange={(value) => handleSelectChange(field.name, value)}
                             disabled={field.disabled || isLoading}
                           >
@@ -289,7 +296,7 @@ export default function ProfilePage() {
                             </SelectTrigger>
                             <SelectContent>
                               {field.options.map(option => (
-                                <SelectItem key={option} value={option}>{option}</SelectItem>
+                                <SelectItem key={option} value={option}>{field.name === 'currentSemester' ? `Semester ${option}` : option}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
@@ -301,13 +308,16 @@ export default function ProfilePage() {
                             value={(profileData as any)?.[field.name] || ''}
                             onChange={handleInputChange}
                             required={field.required}
+                            min={field.min}
+                            max={field.max}
                             disabled={field.disabled || isLoading || (currentProfileIsStudent && field.disabled && field.name === 'admissionId')} // Admission ID specific disable
                             className="bg-background"
                           />
                         )
                       ) : (
                         <p className="text-md p-2 border-b min-h-[40px] bg-muted/20 rounded-sm">
-                           {field.type === 'date' && (profileData as any)?.[field.name]
+                           {field.name === 'currentSemester' && (profileData as any)?.[field.name] ? `Semester ${(profileData as any)[field.name]}` :
+                            field.type === 'date' && (profileData as any)?.[field.name]
                             ? new Date((profileData as any)[field.name]).toLocaleDateString()
                             : (profileData as any)?.[field.name] || <span className="text-muted-foreground italic">N/A</span>
                            }
