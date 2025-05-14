@@ -149,12 +149,12 @@ export default function ProfilePage() {
   const canEdit = user.role === 'Student' || user.role === 'Faculty';
 
   const studentProfileFields = [
-    // Account & Basic Info (some might be less editable by student)
+    // Account & Basic Info
     { name: 'fullName', label: 'Full Name', icon: UserCircle, type: 'text', required: true, section: 'Account' },
-    { name: 'admissionId', label: 'Admission ID (USN)', icon: Briefcase, type: 'text', required: true, disabled: true, section: 'Academic' },
-    { name: 'department', label: 'Department', icon: Building, type: 'text', required: true, disabled: true, section: 'Academic' },
-    { name: 'year', label: 'Year of Study', icon: Users, type: 'number', required: true, disabled: true, section: 'Academic' },
-    { name: 'section', label: 'Section', icon: Users, type: 'text', required: true, disabled: true, section: 'Academic' },
+    { name: 'admissionId', label: 'Admission ID (USN)', icon: Briefcase, type: 'text', required: true, disabled: true, section: 'Academic' }, // USN remains non-editable by student
+    { name: 'department', label: 'Department', icon: Building, type: 'text', required: true, section: 'Academic' }, // Now editable
+    { name: 'year', label: 'Year of Study', icon: Users, type: 'number', required: true, section: 'Academic' }, // Now editable
+    { name: 'section', label: 'Section', icon: Users, type: 'text', required: true, section: 'Academic' }, // Now editable
     
     // Personal Details
     { name: 'dateOfBirth', label: 'Date of Birth', icon: CalendarDays, type: 'date', required: true, section: 'Personal' },
@@ -168,7 +168,6 @@ export default function ProfilePage() {
     // Contact Information
     { name: 'contactNumber', label: 'Contact Number', icon: Phone, type: 'tel', required: true, section: 'Contact' },
     { name: 'address', label: 'Address', icon: MapPin, type: 'text', required: true, section: 'Contact' },
-    // Email is part of User, shown in header, not part of StudentProfile form directly
 
     // Parent/Guardian Information
     { name: 'fatherName', label: "Father's Name", icon: UserCircle, type: 'text', section: 'Guardian' },
@@ -253,7 +252,7 @@ export default function ProfilePage() {
       <Card className="shadow-lg">
         <CardHeader className="flex flex-row items-center space-x-4 bg-muted/30 p-6 rounded-t-lg">
             <Image 
-              src={(profileData && 'avatar' in profileData && profileData.avatar) || user.avatar || "https://picsum.photos/seed/avatar/100/100"} 
+              src={(profileData && 'avatar' in profileData && profileData.avatar) || user.avatar || "https://placehold.co/100x100.png"} 
               alt={displayName}
               width={80} 
               height={80} 
@@ -302,7 +301,7 @@ export default function ProfilePage() {
                             value={(profileData as any)?.[field.name] || ''}
                             onChange={handleInputChange}
                             required={field.required}
-                            disabled={field.disabled || isLoading || (currentProfileIsStudent && field.disabled)}
+                            disabled={field.disabled || isLoading || (currentProfileIsStudent && field.disabled && field.name === 'admissionId')} // Admission ID specific disable
                             className="bg-background"
                           />
                         )
@@ -332,4 +331,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
