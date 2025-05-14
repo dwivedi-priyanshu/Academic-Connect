@@ -52,7 +52,7 @@ export async function fetchStudentProfilesForMarksEntry(
     const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1 }).toArray();
     console.log(`[MarksAction] Found ${activeStudentUsers.length} total 'Active' student users in the system.`);
     
-    const activeStudentUserIds = activeStudentUsers.map(u => u.id).filter(id => !!id); 
+    const activeStudentUserIds = activeStudentUsers.map(u => u.id).filter(id => typeof id === 'string' && id.trim() !== ''); // Ensure IDs are valid strings
 
     if (activeStudentUserIds.length === 0) {
         console.log("[MarksAction] No 'Active' student user accounts found. Returning empty list.");
@@ -79,7 +79,14 @@ export async function fetchStudentProfilesForMarksEntry(
     }
     console.log(`[MarksAction] Student profiles to be processed (count: ${studentProfiles.length}):`, studentProfiles.map(p => ({ id: p.id, userId: p.userId, admissionId: p.admissionId, name: p.fullName })));
 
-    const studentUserIdsForMarksQuery = studentProfiles.map(p => p.userId); 
+    const studentUserIdsForMarksQuery = studentProfiles
+        .map(p => p.userId)
+        .filter(id => typeof id === 'string' && id.trim() !== ''); // Ensure these are also valid strings
+
+    if (studentUserIdsForMarksQuery.length === 0) {
+        console.log(`[MarksAction] No valid studentUserIds obtained from profiles for marks query. Returning empty list.`);
+        return studentProfiles.map(profile => ({ profile, marks: undefined })); // Return profiles without marks
+    }
     console.log(`[MarksAction] Querying marks for studentUserIds:`, studentUserIdsForMarksQuery, `Semester: ${semester}, SubjectCode: ${subjectCode}`);
 
 
@@ -96,28 +103,38 @@ export async function fetchStudentProfilesForMarksEntry(
     const marksMap = new Map<string, SubjectMark>();
     existingMarksArray.forEach(markDoc => {
       const markWithStrId = { ...markDoc, _id: String(markDoc._id), id: String(markDoc._id) } as SubjectMark;
-      // Ensure the key is a clean string
-      const keyForMap = String(markDoc.studentId).trim();
-      marksMap.set(keyForMap, markWithStrId);
-      console.log(`[MarksAction] Populating marksMap: key='${keyForMap}' (length: ${keyForMap?.length}), studentName: ${markDoc.studentName}`);
+      // Ensure the key is a clean, valid string
+      if (markDoc.studentId && typeof markDoc.studentId === 'string' && markDoc.studentId.trim() !== '') {
+        const keyForMap = markDoc.studentId.trim();
+        marksMap.set(keyForMap, markWithStrId);
+        console.log(`[MarksAction] Populating marksMap: key='${keyForMap}' (length: ${keyForMap.length}), studentName: ${markDoc.studentName}`);
+      } else {
+        console.warn(`[MarksAction] Mark record skipped for map due to invalid studentId: ${JSON.stringify(markDoc)}`);
+      }
     });
     console.log(`[MarksAction] Marks map created. Size: ${marksMap.size}. Keys:`, Array.from(marksMap.keys()));
 
 
     const result = studentProfiles.map(profile => {
-      const keyForLookup = String(profile.userId).trim(); // Ensure the lookup key is a clean string
-      const foundMarks = marksMap.get(keyForLookup);
+      let foundMarks: SubjectMark | undefined = undefined;
+      // Ensure the lookup key is a clean, valid string
+      if (profile.userId && typeof profile.userId === 'string' && profile.userId.trim() !== '') {
+        const keyForLookup = profile.userId.trim();
+        foundMarks = marksMap.get(keyForLookup);
       
-      if (foundMarks) {
-          console.log(`[MarksAction] Successfully mapped marks for student profile.userId: '${keyForLookup}' (USN: ${profile.admissionId}, Name: ${profile.fullName})`);
+        if (foundMarks) {
+            console.log(`[MarksAction] Successfully mapped marks for student profile.userId: '${keyForLookup}' (USN: ${profile.admissionId}, Name: ${profile.fullName})`);
+        } else {
+            console.log(`[MarksAction] DID NOT map marks for student profile.userId: '${keyForLookup}' (USN: ${profile.admissionId}, Name: ${profile.fullName}). Checking if raw marks exist for this studentId...`);
+            const markForThisStudentExistsInRawFetch = existingMarksArray.find(m => m.studentId && typeof m.studentId === 'string' && m.studentId.trim() === keyForLookup);
+            if (markForThisStudentExistsInRawFetch) {
+                console.log(`[MarksAction] ---> YES, marks for '${keyForLookup}' (USN: ${profile.admissionId}) *WERE* in existingMarksArray. Raw markDoc.studentId was: '${markForThisStudentExistsInRawFetch.studentId.trim()}'. This indicates a map keying issue or subtle string difference not caught by trim().`);
+            } else {
+                console.log(`[MarksAction] ---> NO, marks for '${keyForLookup}' (USN: ${profile.admissionId}) were *NOT* in existingMarksArray. This is expected if no marks were entered yet for this subject/student combination for this specific student, or if the student's marks were not fetched in the initial query for existingMarksArray.`);
+            }
+        }
       } else {
-          console.log(`[MarksAction] DID NOT map marks for student profile.userId: '${keyForLookup}' (USN: ${profile.admissionId}, Name: ${profile.fullName}). Checking if raw marks exist for this studentId...`);
-          const markForThisStudentExistsInRawFetch = existingMarksArray.find(m => String(m.studentId).trim() === keyForLookup);
-          if (markForThisStudentExistsInRawFetch) {
-              console.log(`[MarksAction] ---> YES, marks for '${keyForLookup}' (USN: ${profile.admissionId}) *WERE* in existingMarksArray. Raw markDoc.studentId was: '${String(markForThisStudentExistsInRawFetch.studentId).trim()}'. This indicates a map keying issue or subtle string difference not caught by trim().`);
-          } else {
-              console.log(`[MarksAction] ---> NO, marks for '${keyForLookup}' (USN: ${profile.admissionId}) were *NOT* in existingMarksArray. This is expected if no marks were entered yet for this subject/student combination for this specific student, or if the student's marks were not fetched in the initial query for existingMarksArray.`);
-          }
+         console.warn(`[MarksAction] Profile skipped for marks lookup due to invalid userId: ${JSON.stringify(profile)}`)
       }
       return {
         profile: profile, 
