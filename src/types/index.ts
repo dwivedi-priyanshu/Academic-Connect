@@ -25,7 +25,7 @@ export interface StudentProfile {
   address: string;
   department: string;
   year: number; 
-  currentSemester?: number; // New field for current semester
+  currentSemester: number; // Changed to non-optional as it's critical
   section: string; 
   parentName: string; // General guardian name
   parentContact: string;
@@ -40,6 +40,7 @@ export interface StudentProfile {
   nationality?: string;
   sslcMarks?: string; // e.g., "90%" or "10 CGPA"
   pucMarks?: string;  // e.g., "85%" or "9.5 CGPA"
+  avatar?: string; // Added avatar to student profile for consistency
 }
 
 export interface SubjectMark {
@@ -70,9 +71,10 @@ export interface MiniProject {
   reportUrl?: string; 
   submittedDate: string; 
   status: SubmissionStatus;
-  facultyId?: string; 
+  facultyId?: string; // Faculty who last actioned it (approved/rejected)
   remarks?: string;
-  subject: string; 
+  subject: string;
+  guideId?: string; // User ID of the faculty guide
 }
 
 export interface MoocCourse {
@@ -87,7 +89,7 @@ export interface MoocCourse {
   creditsEarned?: number;
   submittedDate: string; 
   status: SubmissionStatus;
-  facultyId?: string;
+  facultyId?: string; // Faculty who last actioned it
   remarks?: string;
 }
 
@@ -113,13 +115,3 @@ export const MOCK_USER_ADMIN_DATA: Omit<User, 'id' | '_id' | 'status'> = {
   role: 'Admin',
   avatar: 'https://picsum.photos/seed/admin789/100/100',
 };
-
-// It's assumed the 'users' collection in MongoDB would contain user documents.
-// Example structure for a user document in MongoDB (using 'id' as a unique string, could also be email):
-// { id: "student123", email: "student@example.com", name: "John Doe", role: "Student", avatar: "...", status: "Active", hashedPassword: "..." }
-// { id: "faculty456", email: "faculty@example.com", name: "Dr. Jane Smith", role: "Faculty", avatar: "...", status: "Active", hashedPassword: "..." }
-// { id: "admin789", email: "admin@example.com", name: "Admin User", role: "Admin", avatar: "...", status: "Active", hashedPassword: "..." }
-
-// Student profiles in `student_profiles` collection would link via `userId`.
-// Example: { userId: "student123", admissionId: "1USN001", fullName: "John Doe", ... }
-

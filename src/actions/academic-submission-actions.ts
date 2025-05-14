@@ -52,8 +52,6 @@ export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 's
 
     if (moocData.id && moocData.id !== 'new') { // Update existing
       const { id, ...dataToUpdateFromClient } = moocData;
-      // Ensure _id is not part of the $set operation.
-      // The `moocData` type `Omit`s `_id`, but runtime spread `...currentMooc` might re-introduce it.
       const dataToUpdate = { ...dataToUpdateFromClient };
       delete (dataToUpdate as any)._id; 
 
@@ -80,12 +78,12 @@ export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 's
     }
     return savedMooc;
   } catch (error) {
-    console.error('Error saving MOOC:', error);
+    console.error('Error saving MOOC:', error); 
     let errorMessage = 'Failed to save MOOC.';
     if (error instanceof Error && error.message) {
       errorMessage += ` Details: ${error.message}`;
     }
-    throw new Error(errorMessage);
+    throw new Error(errorMessage); 
   }
 }
 
@@ -117,15 +115,13 @@ export async function fetchStudentProjectsAction(studentId: string): Promise<Min
   }
 }
 
-export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'id' | 'submittedDate' | 'status' | '_id'> & { id?: string }, studentId: string): Promise<MiniProject> {
+export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'id' | 'submittedDate' | 'status' | '_id' | 'guideId'> & { id?: string; guideId?: string; }, studentId: string): Promise<MiniProject> {
   try {
     const projectsCollection = await getProjectsCollection();
     let savedProject: MiniProject;
 
     if (projectData.id && projectData.id !== 'new') { // Update existing
       const { id, ...dataToUpdateFromClient } = projectData;
-      // Ensure _id is not part of the $set operation.
-      // The `projectData` type `Omit`s `_id`, but runtime spread `...currentProject` might re-introduce it.
       const dataToUpdate = { ...dataToUpdateFromClient };
       delete (dataToUpdate as any)._id;
 
@@ -146,6 +142,7 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
         studentId,
         submittedDate: new Date().toISOString(),
         status: 'Pending', 
+        // guideId can be passed in projectData if student selects it
       };
       const result = await projectsCollection.insertOne(newProjectInternal as MiniProject);
       const insertedIdStr = result.insertedId.toHexString();
@@ -204,20 +201,46 @@ export async function fetchPendingSubmissionsAction(facultyId: string): Promise<
 export async function updateSubmissionStatusAction(
   submissionId: string,
   type: 'project' | 'mooc',
-  status: SubmissionStatus,
+  newStatus: SubmissionStatus, // Renamed from 'status' to 'newStatus' to avoid conflict
   remarks: string,
-  facultyId: string
+  facultyId: string // The ID of the faculty member performing the action
 ): Promise<boolean> {
   try {
-    const collection = type === 'project' ? await getProjectsCollection() : await getMoocsCollection();
+    let collection: Collection<MiniProject> | Collection<MoocCourse>;
+    let submissionDocument: MiniProject | MoocCourse | null = null;
+
+    if (type === 'project') {
+      collection = await getProjectsCollection();
+      submissionDocument = await collection.findOne({ _id: new ObjectId(submissionId) }) as MiniProject | null;
+      
+      if (submissionDocument) {
+        const project = submissionDocument as MiniProject;
+        if (!project.guideId) {
+          throw new Error("Project cannot be actioned: No guide has been assigned.");
+        }
+        if (project.guideId !== facultyId) {
+          throw new Error("Action restricted: You are not the assigned guide for this project.");
+        }
+      } else {
+        throw new Error("Project not found.");
+      }
+
+    } else { // type === 'mooc'
+      collection = await getMoocsCollection();
+      // For MOOCs, any faculty can approve/reject for now as no guide concept.
+    }
+    
     const result = await collection.updateOne(
       { _id: new ObjectId(submissionId) },
-      { $set: { status, remarks, facultyId } } 
+      // For MOOCs, and for projects if checks pass:
+      { $set: { status: newStatus, remarks, facultyId } } 
     );
     return result.modifiedCount === 1;
   } catch (error) {
     console.error(`Error updating ${type} status:`, error);
+    if (error instanceof Error) {
+      throw new Error(error.message || `Failed to update ${type} status.`);
+    }
     throw new Error(`Failed to update ${type} status.`);
   }
 }
-

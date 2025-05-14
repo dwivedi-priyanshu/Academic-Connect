@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import type { MiniProject, MoocCourse, SubmissionStatus } from '@/types';
-import { CheckSquare, CheckCircle, XCircle, Clock, Download, Eye } from 'lucide-react';
+import { CheckSquare, CheckCircle, XCircle, Clock, Download, Eye, ShieldAlert } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
 import { fetchPendingSubmissionsAction, updateSubmissionStatusAction } from '@/actions/academic-submission-actions';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 
 export default function ApprovalsPage() {
@@ -25,8 +26,10 @@ export default function ApprovalsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
   const [remarks, setRemarks] = useState("");
-  const [currentSubmission, setCurrentSubmission] = useState<{id: string, type: 'project' | 'mooc', title: string} | null>(null);
+  const [currentSubmission, setCurrentSubmission] = useState<{id: string, type: 'project' | 'mooc', title: string, guideId?: string} | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [actionType, setActionType] = useState<SubmissionStatus | null>(null);
+
 
   const loadPendingSubmissions = async () => {
     if (user && user.role === 'Faculty') {
@@ -53,31 +56,28 @@ export default function ApprovalsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, toast]);
 
-  const handleAction = (submissionId: string, type: 'project' | 'mooc', title: string) => {
-    setCurrentSubmission({ id: submissionId, type, title });
+  const handleAction = (submissionId: string, type: 'project' | 'mooc', title: string, decStatus: SubmissionStatus, guideId?: string) => {
+    setCurrentSubmission({ id: submissionId, type, title, guideId });
+    setActionType(decStatus); // Store which button was clicked (Approve/Reject)
     setRemarks("");
     setIsModalOpen(true);
   };
 
-  const submitDecision = async (status: SubmissionStatus) => {
-    if (!user || !currentSubmission) return;
+  const submitDecision = async () => {
+    if (!user || !currentSubmission || !actionType) return;
     setIsSubmittingDecision(true);
-    setIsModalOpen(false);
-
+    
     try {
-      const success = await updateSubmissionStatusAction(currentSubmission.id, currentSubmission.type, status, remarks, user.id);
-      
-      if (success) {
-        toast({ title: "Submission Updated", description: `${currentSubmission.type === 'project' ? 'Project' : 'MOOC'} "${currentSubmission.title}" status updated to ${status}.`, className: "bg-success text-success-foreground" });
-        await loadPendingSubmissions(); // Refresh list
-      } else {
-        toast({ title: "Update Failed", description: "Could not update submission status.", variant: "destructive" });
-      }
+      await updateSubmissionStatusAction(currentSubmission.id, currentSubmission.type, actionType, remarks, user.id);
+      toast({ title: "Submission Updated", description: `${currentSubmission.type === 'project' ? 'Project' : 'MOOC'} "${currentSubmission.title}" status updated to ${actionType}.`, className: "bg-success text-success-foreground" });
+      await loadPendingSubmissions(); // Refresh list
+      setIsModalOpen(false); // Close modal on success
     } catch (error) {
-        toast({ title: "Error", description: (error as Error).message || "Failed to update submission.", variant: "destructive" });
+        toast({ title: "Update Failed", description: (error as Error).message || "Could not update submission status.", variant: "destructive" });
+        // Keep modal open on error to allow user to see message or retry
     } finally {
-      setCurrentSubmission(null);
       setIsSubmittingDecision(false);
+      // Don't reset currentSubmission or actionType here, in case modal stays open on error
     }
   };
 
@@ -86,14 +86,50 @@ export default function ApprovalsPage() {
     const details = type === 'project' ? [
       `Subject: ${(item as MiniProject).subject}`,
       `Description: ${(item as MiniProject).description}`,
-      `PPT: ${(item as MiniProject).pptUrl || 'N/A'}`, // Assuming file names are stored
+      `PPT: ${(item as MiniProject).pptUrl || 'N/A'}`, 
       `Report: ${(item as MiniProject).reportUrl || 'N/A'}`,
+      `Guide ID: ${(item as MiniProject).guideId || 'Not Assigned'}`,
     ] : [
       `Platform: ${(item as MoocCourse).platform}`,
       `Duration: ${format(new Date((item as MoocCourse).startDate), "PP")} - ${format(new Date((item as MoocCourse).endDate), "PP")}`,
-      `Certificate: ${(item as MoocCourse).certificateUrl || 'N/A'}`, // Assuming file names are stored
-      `Credits: ${(item as MoocCourse).creditsEarned || 'N/A'}`,
+      `Certificate: ${(item as MoocCourse).certificateUrl || 'N/A'}`,
+      `Credits: ${(item as MoocCourse).creditsEarned ?? 'N/A'}`, // Use ?? for creditsEarned
     ];
+
+    let projectActionDisabled = false;
+    let projectTooltipMessage = "";
+
+    if (type === 'project' && user) {
+        const projectItem = item as MiniProject;
+        if (!projectItem.guideId) {
+            projectActionDisabled = true;
+            projectTooltipMessage = "Action disabled: No guide assigned to this project.";
+        } else if (projectItem.guideId !== user.id) {
+            projectActionDisabled = true;
+            projectTooltipMessage = "Action restricted: You are not the assigned guide.";
+        }
+    }
+
+    const actionButtons = (
+        <div className="flex justify-end gap-2">
+            <Button 
+                size="sm" 
+                className="bg-success hover:bg-success/90 text-success-foreground" 
+                onClick={() => handleAction(item.id, type, title, 'Approved', (item as MiniProject).guideId)} 
+                disabled={isSubmittingDecision || projectActionDisabled}
+            >
+                <CheckCircle className="mr-1 h-4 w-4" /> Approve
+            </Button>
+            <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={() => handleAction(item.id, type, title, 'Rejected', (item as MiniProject).guideId)} 
+                disabled={isSubmittingDecision || projectActionDisabled}
+            >
+                <XCircle className="mr-1 h-4 w-4" /> Reject
+            </Button>
+        </div>
+    );
 
     return (
       <Card key={item.id} className="shadow-md hover:shadow-lg transition-shadow">
@@ -107,18 +143,26 @@ export default function ApprovalsPage() {
         <CardContent className="text-sm space-y-1">
           {details.map((detail, i) => <p key={i}>{detail}</p>)}
         </CardContent>
-        <CardFooter className="flex justify-end gap-2">
-            {/* Mock view/download buttons; in a real app, these would link to actual files */}
-            {(item as any).pptUrl && <Button variant="outline" size="sm" onClick={() => alert(`Viewing PPT: ${(item as any).pptUrl}`)}><Eye className="mr-1 h-3 w-3"/> View PPT</Button>}
-            {(item as any).reportUrl && <Button variant="outline" size="sm" onClick={() => alert(`Viewing Report: ${(item as any).reportUrl}`)}><Eye className="mr-1 h-3 w-3"/> View Report</Button>}
-            {(item as any).certificateUrl && <Button variant="outline" size="sm" onClick={() => alert(`Viewing Certificate: ${(item as any).certificateUrl}`)}><Download className="mr-1 h-3 w-3"/> View Cert.</Button>}
-            
-            <Button size="sm" className="bg-success hover:bg-success/90 text-success-foreground" onClick={() => handleAction(item.id, type, title)} disabled={isSubmittingDecision}>
-                <CheckCircle className="mr-1 h-4 w-4" /> Approve
-            </Button>
-            <Button variant="destructive" size="sm" onClick={() => handleAction(item.id, type, title)} disabled={isSubmittingDecision}>
-                <XCircle className="mr-1 h-4 w-4" /> Reject
-            </Button>
+        <CardFooter>
+            {type === 'project' && projectActionDisabled ? (
+                <TooltipProvider>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <div className="flex justify-end gap-2 w-full">
+                                <Button size="sm" className="bg-success hover:bg-success/90 text-success-foreground" disabled={true}><CheckCircle className="mr-1 h-4 w-4" /> Approve</Button>
+                                <Button variant="destructive" size="sm" disabled={true}><XCircle className="mr-1 h-4 w-4" /> Reject</Button>
+                            </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="bg-destructive text-destructive-foreground">
+                            <p><ShieldAlert className="inline mr-1 h-4 w-4"/>{projectTooltipMessage}</p>
+                        </TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
+            ) : (
+                actionButtons
+            )}
+             {/* Mock view/download buttons; in a real app, these would link to actual files */}
+             {type !== 'project' && (item as any).certificateUrl && <Button variant="outline" size="sm" onClick={() => alert(`Viewing Certificate: ${(item as any).certificateUrl}`)}><Download className="mr-1 h-3 w-3"/> View Cert.</Button>}
         </CardFooter>
       </Card>
     );
@@ -141,7 +185,7 @@ export default function ApprovalsPage() {
           <Card className="shadow-none border-0">
             <CardHeader>
               <CardTitle>Pending Mini-Project Approvals</CardTitle>
-              <CardDescription>Review and approve or reject student mini-project submissions.</CardDescription>
+              <CardDescription>Review and approve or reject student mini-project submissions. Action permitted only if you are the assigned guide.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {isLoading ? <p>Loading project submissions...</p> : 
@@ -163,10 +207,18 @@ export default function ApprovalsPage() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <Dialog open={isModalOpen} onOpenChange={(isOpen) => {
+          if (isSubmittingDecision && !isOpen) return; // Prevent closing if submitting
+          setIsModalOpen(isOpen);
+          if (!isOpen) { // Reset if modal is closed
+            setCurrentSubmission(null);
+            setActionType(null);
+            setRemarks("");
+          }
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Action for: {currentSubmission?.title}</DialogTitle>
+            <DialogTitle>{actionType} for: {currentSubmission?.title}</DialogTitle>
             <DialogDescription>
               Provide remarks for your decision (optional for approval, recommended for rejection).
             </DialogDescription>
@@ -182,16 +234,19 @@ export default function ApprovalsPage() {
                 onChange={(e) => setRemarks(e.target.value)}
                 className="col-span-3 bg-background"
                 placeholder="e.g., Project meets all requirements / Needs more detailed report."
+                disabled={isSubmittingDecision}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsModalOpen(false)} disabled={isSubmittingDecision}>Cancel</Button>
-            <Button variant="destructive" onClick={() => submitDecision('Rejected')} disabled={isSubmittingDecision}>
-              <XCircle className="mr-2 h-4 w-4" /> {isSubmittingDecision ? 'Rejecting...' : 'Reject'}
-            </Button>
-            <Button className="bg-success hover:bg-success/90 text-success-foreground" onClick={() => submitDecision('Approved')} disabled={isSubmittingDecision}>
-              <CheckCircle className="mr-2 h-4 w-4" /> {isSubmittingDecision ? 'Approving...' : 'Approve'}
+            <Button 
+              onClick={submitDecision} 
+              disabled={isSubmittingDecision || (actionType === 'Rejected' && !remarks.trim())} // Require remarks for rejection
+              className={actionType === 'Approved' ? "bg-success hover:bg-success/90 text-success-foreground" : "bg-destructive hover:bg-destructive/90 text-destructive-foreground"}
+            >
+              {actionType === 'Approved' ? <CheckCircle className="mr-2 h-4 w-4" /> : <XCircle className="mr-2 h-4 w-4" />}
+              {isSubmittingDecision ? 'Submitting...' : `Confirm ${actionType}`}
             </Button>
           </DialogFooter>
         </DialogContent>
