@@ -95,25 +95,29 @@ export async function fetchStudentProfilesForMarksEntry(
 
     const marksMap = new Map<string, SubjectMark>();
     existingMarksArray.forEach(markDoc => {
-      // Ensure _id and id are strings, as expected by SubjectMark type
       const markWithStrId = { ...markDoc, _id: String(markDoc._id), id: String(markDoc._id) } as SubjectMark;
-      marksMap.set(markDoc.studentId, markWithStrId); 
+      // Ensure the key is a clean string
+      const keyForMap = String(markDoc.studentId).trim();
+      marksMap.set(keyForMap, markWithStrId);
+      console.log(`[MarksAction] Populating marksMap: key='${keyForMap}' (length: ${keyForMap?.length}), studentName: ${markDoc.studentName}`);
     });
     console.log(`[MarksAction] Marks map created. Size: ${marksMap.size}. Keys:`, Array.from(marksMap.keys()));
 
 
     const result = studentProfiles.map(profile => {
-      const foundMarks = marksMap.get(profile.userId);
-      if (!foundMarks) {
-          console.log(`[MarksAction] No marks found in map for student profile userId: ${profile.userId} (USN: ${profile.admissionId}).`);
-          const markForThisStudentExistsInRawFetch = existingMarksArray.find(m => m.studentId === profile.userId);
-          if (markForThisStudentExistsInRawFetch) {
-              console.log(`[MarksAction] ---> YES, marks for ${profile.userId} (USN: ${profile.admissionId}) *WERE* in existingMarksArray. Potential key mismatch for map? Raw markDoc studentId: '${markForThisStudentExistsInRawFetch.studentId}', profile.userId: '${profile.userId}'`);
-          } else {
-              console.log(`[MarksAction] ---> NO, marks for ${profile.userId} (USN: ${profile.admissionId}) were *NOT* in existingMarksArray. This is expected if no marks were entered yet for this subject/student.`);
-          }
+      const keyForLookup = String(profile.userId).trim(); // Ensure the lookup key is a clean string
+      const foundMarks = marksMap.get(keyForLookup);
+      
+      if (foundMarks) {
+          console.log(`[MarksAction] Successfully mapped marks for student profile.userId: '${keyForLookup}' (USN: ${profile.admissionId}, Name: ${profile.fullName})`);
       } else {
-        console.log(`[MarksAction] Successfully mapped marks for student userId: ${profile.userId} (USN: ${profile.admissionId})`);
+          console.log(`[MarksAction] DID NOT map marks for student profile.userId: '${keyForLookup}' (USN: ${profile.admissionId}, Name: ${profile.fullName}). Checking if raw marks exist for this studentId...`);
+          const markForThisStudentExistsInRawFetch = existingMarksArray.find(m => String(m.studentId).trim() === keyForLookup);
+          if (markForThisStudentExistsInRawFetch) {
+              console.log(`[MarksAction] ---> YES, marks for '${keyForLookup}' (USN: ${profile.admissionId}) *WERE* in existingMarksArray. Raw markDoc.studentId was: '${String(markForThisStudentExistsInRawFetch.studentId).trim()}'. This indicates a map keying issue or subtle string difference not caught by trim().`);
+          } else {
+              console.log(`[MarksAction] ---> NO, marks for '${keyForLookup}' (USN: ${profile.admissionId}) were *NOT* in existingMarksArray. This is expected if no marks were entered yet for this subject/student combination for this specific student, or if the student's marks were not fetched in the initial query for existingMarksArray.`);
+          }
       }
       return {
         profile: profile, 
@@ -269,7 +273,7 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
   const activeStudentUserIds = activeStudentUsers.map(u => u.id).filter(id => !!id);
 
   if (activeStudentUserIds.length === 0) {
-    console.log("[MarksAction] No active students found in the system for performance analysis.");
+    console.log("[MarksAction PA] No active students found in the system for performance analysis.");
     return [];
   }
    console.log("[MarksAction PA] Active student user IDs for profile query:", activeStudentUserIds);
@@ -307,3 +311,4 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
     return { ...rest, id: String(doc._id), _id: String(doc._id) } as SubjectMark;
   });
 }
+
