@@ -15,17 +15,11 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { fetchStudentsForFacultyAction } from '@/actions/profile-actions'; // Updated action import
+import { fetchStudentsForFacultyAction } from '@/actions/profile-actions';
 import { useToast } from '@/hooks/use-toast';
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
-const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
-  "1": [{ code: "MA101", name: "Applied Mathematics I" }, { code: "PH102", name: "Engineering Physics" }],
-  "2": [{ code: "MA201", name: "Applied Mathematics II" }, { code: "CH202", name: "Engineering Chemistry" }],
-  "3": [{ code: "CS201", name: "Data Structures" }, { code: "CS202", name: "Discrete Mathematics" }, { code: "MA201", name: "Probability & Statistics" }, { code: "DDCO", name: "Digital Design & Comp Org"}],
-   "4": [{ code: "CS401", name: "Algorithms" }, { code: "CS402", name: "Operating Systems" }],
-};
 
 export default function FacultyStudentsPage() {
   const { user } = useAuth();
@@ -38,25 +32,21 @@ export default function FacultyStudentsPage() {
 
   const [selectedSemester, setSelectedSemester] = useState<string>("");
   const [selectedSection, setSelectedSection] = useState<string>("");
-  const [selectedSubject, setSelectedSubject] = useState<{ code: string, name: string } | null>(null);
-  const [subjectsForSemester, setSubjectsForSemester] = useState<{ code: string, name: string }[]>([]);
 
   useEffect(() => {
-    setSubjectsForSemester(SUBJECTS_BY_SEMESTER[selectedSemester] || []);
-    setSelectedSubject(null);
+    // Reset subordinate filters and data when semester changes
+    setSelectedSection(""); // Also reset section if semester changes, or make it conditional
     setFilteredStudents([]);
     setAllStudentsFromSelection([]);
     setInitialLoadAttempted(false);
   }, [selectedSemester]);
 
   useEffect(() => {
-    if (user && user.role === 'Faculty' && selectedSemester && selectedSection && selectedSubject) {
+    if (user && user.role === 'Faculty' && selectedSemester && selectedSection) {
       setIsLoading(true);
       setInitialLoadAttempted(true);
       const year = Math.ceil(parseInt(selectedSemester) / 2);
-      // Assuming faculty might be associated with a department, but for now, simplified.
-      // The subject selected might also imply a department.
-      // For this mock, we pass undefined for department, but in a real app, it would be derived.
+      
       fetchStudentsForFacultyAction(user.id, { year, section: selectedSection }).then(data => {
         setAllStudentsFromSelection(data);
         setFilteredStudents(data);
@@ -70,12 +60,11 @@ export default function FacultyStudentsPage() {
       setAllStudentsFromSelection([]);
       setFilteredStudents([]);
       setIsLoading(false);
-      if (selectedSemester && selectedSection && selectedSubject) {
-        // If all selections are made but user context is not ready or role is wrong.
+      if (selectedSemester && selectedSection) {
         setInitialLoadAttempted(true); 
       }
     }
-  }, [user, selectedSemester, selectedSection, selectedSubject, toast]);
+  }, [user, selectedSemester, selectedSection, toast]);
 
   useEffect(() => {
     if (!searchTerm) {
@@ -95,7 +84,7 @@ export default function FacultyStudentsPage() {
     return <p>Access denied. This page is for faculty members only.</p>;
   }
 
-  const selectionMade = !!(selectedSemester && selectedSection && selectedSubject);
+  const selectionMade = !!(selectedSemester && selectedSection);
 
   return (
     <div className="space-y-6">
@@ -105,10 +94,10 @@ export default function FacultyStudentsPage() {
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Select Class and Subject</CardTitle>
-          <CardDescription>Choose the semester, section, and subject to view students.</CardDescription>
+          <CardTitle>Select Class</CardTitle>
+          <CardDescription>Choose the semester and section to view students.</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
             <Label htmlFor="semester">Semester</Label>
             <Select value={selectedSemester} onValueChange={setSelectedSemester}>
@@ -127,30 +116,13 @@ export default function FacultyStudentsPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="subject">Subject</Label>
-            <Select
-              value={selectedSubject?.code || ""}
-              onValueChange={(code) => setSelectedSubject(subjectsForSemester.find(s => s.code === code) || null)}
-              disabled={!selectedSection || subjectsForSemester.length === 0}
-            >
-              <SelectTrigger id="subject"><SelectValue placeholder="Select Subject" /></SelectTrigger>
-              <SelectContent>
-                {subjectsForSemester.length > 0 ? (
-                    subjectsForSemester.map(sub => <SelectItem key={sub.code} value={sub.code}>{sub.name} ({sub.code})</SelectItem>)
-                ) : (
-                    <SelectItem value="-" disabled>No subjects found</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
         </CardContent>
       </Card>
 
       {selectionMade && (
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>Students for {selectedSubject?.name} ({selectedSubject?.code}) - Sem {selectedSemester}, Sec {selectedSection}</CardTitle>
+            <CardTitle>Students for Semester {selectedSemester}, Section {selectedSection}</CardTitle>
             <CardDescription>View student profiles and academic details for the selected class.</CardDescription>
             <div className="relative mt-4">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -243,10 +215,9 @@ export default function FacultyStudentsPage() {
          <Alert className="mt-6 bg-accent/20 border-accent text-accent-foreground">
              <Info className="h-5 w-5 text-accent" />
             <AlertTitle>Select Class</AlertTitle>
-            <AlertDescription>Please select a semester, section, and subject above to view the corresponding student list.</AlertDescription>
+            <AlertDescription>Please select a semester and section above to view the corresponding student list.</AlertDescription>
         </Alert>
       )}
     </div>
   );
 }
-
