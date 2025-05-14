@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from 'zod';
@@ -57,7 +58,7 @@ export async function fetchStudentProfilesForMarksEntry(
         console.log("[MarksAction] No 'Active' student user accounts found. Returning empty list.");
         return [];
     }
-    console.log("[MarksAction] Active student user IDs:", activeStudentUserIds);
+    console.log("[MarksAction] Active student user IDs for profile query:", activeStudentUserIds);
     
     const studentProfilesCursor = studentProfilesCollection.find({
         year,
@@ -76,9 +77,11 @@ export async function fetchStudentProfilesForMarksEntry(
       console.log(`[MarksAction] No active student profiles found for Sem ${semester} (Year ${year}), Sec ${section} matching active users. Returning empty list.`);
       return [];
     }
-    console.log(`[MarksAction] Student profiles to be processed:`, studentProfiles.map(p => ({ id: p.id, userId: p.userId, admissionId: p.admissionId, name: p.fullName })));
+    console.log(`[MarksAction] Student profiles to be processed (count: ${studentProfiles.length}):`, studentProfiles.map(p => ({ id: p.id, userId: p.userId, admissionId: p.admissionId, name: p.fullName })));
 
     const studentUserIdsForMarksQuery = studentProfiles.map(p => p.userId); 
+    console.log(`[MarksAction] Querying marks for studentUserIds:`, studentUserIdsForMarksQuery, `Semester: ${semester}, SubjectCode: ${subjectCode}`);
+
 
     const marksQuery: Filter<SubjectMark> = {
       studentId: { $in: studentUserIdsForMarksQuery }, 
@@ -87,18 +90,34 @@ export async function fetchStudentProfilesForMarksEntry(
     };
     const existingMarksCursor = marksCollection.find(marksQuery);
     const existingMarksArray = await existingMarksCursor.toArray();
-    console.log(`[MarksAction] Found ${existingMarksArray.length} existing marks records for these students, subject ${subjectCode}, semester ${semester}.`);
+    console.log(`[MarksAction] Found ${existingMarksArray.length} existing marks records from DB. Records:`, JSON.stringify(existingMarksArray.map(m => ({studentId: m.studentId, subject: m.subjectCode, ia1: m.ia1_50}))));
+
 
     const marksMap = new Map<string, SubjectMark>();
     existingMarksArray.forEach(markDoc => {
+      // Ensure _id and id are strings, as expected by SubjectMark type
       const markWithStrId = { ...markDoc, _id: String(markDoc._id), id: String(markDoc._id) } as SubjectMark;
       marksMap.set(markDoc.studentId, markWithStrId); 
     });
+    console.log(`[MarksAction] Marks map created. Size: ${marksMap.size}. Keys:`, Array.from(marksMap.keys()));
+
 
     const result = studentProfiles.map(profile => {
+      const foundMarks = marksMap.get(profile.userId);
+      if (!foundMarks) {
+          console.log(`[MarksAction] No marks found in map for student profile userId: ${profile.userId} (USN: ${profile.admissionId}).`);
+          const markForThisStudentExistsInRawFetch = existingMarksArray.find(m => m.studentId === profile.userId);
+          if (markForThisStudentExistsInRawFetch) {
+              console.log(`[MarksAction] ---> YES, marks for ${profile.userId} (USN: ${profile.admissionId}) *WERE* in existingMarksArray. Potential key mismatch for map? Raw markDoc studentId: '${markForThisStudentExistsInRawFetch.studentId}', profile.userId: '${profile.userId}'`);
+          } else {
+              console.log(`[MarksAction] ---> NO, marks for ${profile.userId} (USN: ${profile.admissionId}) were *NOT* in existingMarksArray. This is expected if no marks were entered yet for this subject/student.`);
+          }
+      } else {
+        console.log(`[MarksAction] Successfully mapped marks for student userId: ${profile.userId} (USN: ${profile.admissionId})`);
+      }
       return {
         profile: profile, 
-        marks: marksMap.get(profile.userId), 
+        marks: foundMarks, 
       };
     });
     console.log(`[MarksAction] Final result prepared with ${result.length} entries.`);
@@ -253,6 +272,8 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
     console.log("[MarksAction] No active students found in the system for performance analysis.");
     return [];
   }
+   console.log("[MarksAction PA] Active student user IDs for profile query:", activeStudentUserIds);
+
 
   const studentProfilesCursor = studentProfilesCollection.find({ 
     year, 
@@ -260,13 +281,16 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
     userId: { $in: activeStudentUserIds }
   });
   const studentProfiles = await studentProfilesCursor.toArray();
+   console.log(`[MarksAction PA] Found ${studentProfiles.length} student profiles matching Year: ${year}, Section: ${section}.`);
+
 
   if (studentProfiles.length === 0) {
-    console.log(`[MarksAction] No active student profiles found for Sem ${semester}, Sec ${section} for performance analysis. Returning empty marks array.`);
+    console.log(`[MarksAction PA] No active student profiles found for Sem ${semester}, Sec ${section} for performance analysis. Returning empty marks array.`);
     return [];
   }
 
   const studentUserIdsForMarksQuery = studentProfiles.map(p => p.userId); 
+  console.log(`[MarksAction PA] Querying marks for studentUserIds:`, studentUserIdsForMarksQuery, `Semester: ${semester}, SubjectCode: ${subjectCode}`);
 
   const marksQuery: Filter<SubjectMark> = {
     studentId: { $in: studentUserIdsForMarksQuery }, 
@@ -275,7 +299,8 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
   };
 
   const fetchedMarks = await marksCollection.find(marksQuery).toArray();
-  console.log(`[MarksAction] Fetched ${fetchedMarks.length} marks for performance analysis.`);
+  console.log(`[MarksAction PA] Fetched ${fetchedMarks.length} marks for performance analysis. Records:`, JSON.stringify(fetchedMarks.map(m => ({studentId: m.studentId, subject: m.subjectCode, ia1: m.ia1_50 }))));
+
 
   return fetchedMarks.map(doc => {
     const { _id, ...rest } = doc;
