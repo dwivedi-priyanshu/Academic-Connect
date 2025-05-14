@@ -49,14 +49,14 @@ export async function fetchUserProfileDataAction(userId: string): Promise<User |
 export async function fetchStudentFullProfileDataAction(userId: string): Promise<StudentProfile | null> {
   try {
     const studentProfilesCollection = await getStudentProfilesCollection();
-    const profileDoc = await studentProfilesCollection.findOne({ userId: userId });
+    const profileDoc = await studentProfilesCollection.findOne({ userId: String(userId || '').trim() }); // Ensure userId is a trimmed string for query
     
     if (!profileDoc) return null;
     
     const idStr = profileDoc._id.toHexString();
      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...rest } = profileDoc;
-    return { ...rest, id: idStr, _id: idStr, userId: profileDoc.userId } as StudentProfile;
+    return { ...rest, id: idStr, _id: idStr, userId: String(profileDoc.userId || '').trim() } as StudentProfile; // Ensure userId is trimmed string in result
   } catch (error) {
     console.error('Error fetching student detailed profile data:', error);
     throw new Error('Failed to fetch student detailed profile data.');
@@ -74,7 +74,7 @@ export async function saveStudentProfileDataAction(profileData: StudentProfile):
      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id, userId, _id, ...dataToSave } = profileData; 
     
-    const filter = { userId: userId }; 
+    const filter = { userId: String(userId || '').trim() };  // Ensure userId is trimmed string for filter
     
     const updateDoc = { $set: dataToSave };
 
@@ -101,7 +101,7 @@ export async function saveUserGeneralDataAction(userData: Partial<User> & { id: 
          // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id, status, _id, password, role, ...dataToUpdate } = userData; // Exclude sensitive/internal/non-editable fields
         
-        const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id: id };
+        const filter = ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id: String(id || '').trim() }; // Ensure id is trimmed string
         const result = await usersCollection.updateOne(
             filter as Filter<User>, 
             { $set: dataToUpdate }, 
@@ -127,7 +127,7 @@ export async function updateUserStatusAction(userId: string, newStatus: UserStat
     const usersCollection = await getUsersCollection();
     const studentProfilesCollection = await getStudentProfilesCollection();
 
-    const userFilter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { id: userId };
+    const userFilter = ObjectId.isValid(userId) ? { _id: new ObjectId(userId) } : { id: String(userId || '').trim() }; // Ensure id is trimmed string
     
     const userToUpdate = await usersCollection.findOne(userFilter as Filter<User>);
     if (!userToUpdate) {
@@ -142,7 +142,7 @@ export async function updateUserStatusAction(userId: string, newStatus: UserStat
     // If student is being activated and admissionId is provided, update their profile
     if (userToUpdate.role === 'Student' && newStatus === 'Active' && admissionId) {
       const studentProfileUpdateResult = await studentProfilesCollection.updateOne(
-        { userId: userToUpdate.id }, // Find student profile by their user ID (User.id)
+        { userId: String(userToUpdate.id || '').trim() }, // Find student profile by their user ID (User.id), ensure trimmed
         { $set: { admissionId: admissionId.toUpperCase() } }
       );
       if (studentProfileUpdateResult.matchedCount === 0) {
@@ -166,52 +166,48 @@ export async function updateUserStatusAction(userId: string, newStatus: UserStat
  * @returns An array of student profiles.
  */
 export async function fetchStudentsForFacultyAction(
-  facultyId: string, 
+  facultyId: string,
   filters?: { year?: number; section?: string; department?: string; }
 ): Promise<StudentProfile[]> {
   try {
-    console.log(`[ProfileActions] Fetching students for faculty ${facultyId} with filters:`, JSON.stringify(filters));
+    console.log(`[ProfileActions FFFA] Faculty ${facultyId} - Filters:`, JSON.stringify(filters));
     const studentProfilesCollection = await getStudentProfilesCollection();
-    const query: Filter<StudentProfile> = {}; 
-    
+    const usersCollection = await getUsersCollection();
+    const query: Filter<StudentProfile> = {};
+
     if (filters?.department) query.department = filters.department;
-    if (filters?.year) query.year = filters.year; 
+    if (filters?.year) query.year = filters.year;
     if (filters?.section) query.section = filters.section;
 
-    const usersCollection = await getUsersCollection();
-    // Fetch users and project both _id and id to be safe, though 'id' (string) is primary.
-    const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1, _id: 1 }).toArray();
-    
-    console.log(`[ProfileActions] Found ${activeStudentUsers.length} total 'Active' student user accounts in the system.`);
-    
+    // 1. Fetch 'Active' student user IDs
+    const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1 }).toArray();
     const activeStudentUserIds = activeStudentUsers
-        .map(u => u.id || u._id?.toHexString()) // Prefer string 'id', fallback to hex of '_id'
-        .filter(id => typeof id === 'string' && id.trim() !== ''); // Ensure IDs are valid strings
+        .map(u => u.id)
+        .filter(id => typeof id === 'string' && id.trim() !== ''); // Ensure IDs are valid, non-empty strings
 
-    if(activeStudentUserIds.length === 0) {
-        console.log("[ProfileActions] No 'Active' student user accounts resulted in valid IDs. Returning empty list.");
-        return []; 
+    if (activeStudentUserIds.length === 0) {
+        console.log("[ProfileActions FFFA] No 'Active' student user accounts found. Returning empty list.");
+        return [];
     }
-    console.log("[ProfileActions] Active student user string IDs for profile query:", activeStudentUserIds);
+    console.log(`[ProfileActions FFFA] Found ${activeStudentUserIds.length} 'Active' student user IDs:`, activeStudentUserIds);
 
     query.userId = { $in: activeStudentUserIds };
-    console.log("[ProfileActions] Final query for student_profiles:", JSON.stringify(query));
-
+    console.log("[ProfileActions FFFA] Final query for student_profiles:", JSON.stringify(query));
 
     const studentsArray = await studentProfilesCollection.find(query).toArray();
-    console.log(`[ProfileActions] Found ${studentsArray.length} student profiles matching the final query.`);
-    
+    console.log(`[ProfileActions FFFA] Found ${studentsArray.length} student profiles matching criteria:`, studentsArray.map(p => ({ name: p.fullName, userId: p.userId, admissionId: p.admissionId, year: p.year, section: p.section })));
+
     return studentsArray.map(s => {
         const idStr = s._id.toHexString();
         const { _id, ...rest } = s;
-        // Ensure userId from profile is what we expect (it should be string already as it's set from User.id)
-        return { ...rest, id: idStr, _id: idStr, userId: s.userId } as StudentProfile; 
+        return { ...rest, id: idStr, _id: idStr, userId: String(s.userId || '').trim() } as StudentProfile; // Ensure userId is trimmed string
     });
   } catch (error) {
-    console.error('[ProfileActions] Error fetching students for faculty:', error);
+    console.error('[ProfileActions FFFA] Error fetching students for faculty:', error);
     throw new Error('Failed to fetch students.');
   }
 }
+
 
 /**
  * Fetches all users, optionally filtered by role and status.
@@ -247,7 +243,7 @@ export async function fetchAllUsersAction(filters?: { role?: UserRole, status?: 
  */
 export async function createUserAction(
   userData: Pick<User, 'email' | 'name' | 'role'> & { passwordPlainText: string },
-  studentProfileDetails?: Partial<Omit<StudentProfile, 'userId' | 'id' | '_id' | 'fullName'>> & { fullName?: string, admissionId?: string, avatar?: string; }
+  studentProfileDetails?: Partial<Omit<StudentProfile, 'userId' | 'id' | '_id' | 'fullName'>> & { fullName?: string, admissionId?: string; avatar?: string; }
 ): Promise<{ user: User; studentProfile?: StudentProfile } | null> {
   const usersCollection = await getUsersCollection();
   const studentProfilesCollection = await getStudentProfilesCollection();
@@ -339,3 +335,6 @@ export async function createUserAction(
 
   return { user: createdUser, studentProfile: createdStudentProfile };
 }
+
+
+    
