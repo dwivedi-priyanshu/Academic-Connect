@@ -77,7 +77,8 @@ export async function saveStudentMoocAction(formData: FormData, studentId: strin
       const originalFileName = certificateFile.name;
       // Sanitize filename for Cloudinary public_id: replace spaces and special chars
       const safeFileName = originalFileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      certificateCloudUrl = await uploadStreamToCloudinary(fileBuffer, `mooc_certificates/${studentId}`, safeFileName);
+      const resourceTypeForCert = (certificateFile.type === 'application/pdf' || certificateFile.name.toLowerCase().endsWith('.pdf')) ? 'raw' : 'auto';
+      certificateCloudUrl = await uploadStreamToCloudinary(fileBuffer, `mooc_certificates/${studentId}`, safeFileName, resourceTypeForCert);
     }
 
     const moocData: Omit<MoocCourse, 'id' | '_id' | 'submittedDate' | 'status' | 'submissionSemester'> & { studentId: string; certificateUrl?: string } = {
@@ -194,7 +195,8 @@ export async function saveStudentProjectAction(formData: FormData, studentId: st
         const fileBuffer = Buffer.from(await file.arrayBuffer());
         const originalFileName = file.name;
         const safeFileName = originalFileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
-        return uploadStreamToCloudinary(fileBuffer, `project_files/${studentId}/${type}`, safeFileName);
+        const resourceType = (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) ? 'raw' : 'auto';
+        return uploadStreamToCloudinary(fileBuffer, `project_files/${studentId}/${type}`, safeFileName, resourceType);
       }
       return undefined;
     };
@@ -361,3 +363,4 @@ export async function updateSubmissionStatusAction(
     throw new Error(`Failed to update ${type} status.`);
   }
 }
+

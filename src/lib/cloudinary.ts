@@ -13,15 +13,22 @@ cloudinary.config({
 export async function uploadStreamToCloudinary(
   fileBuffer: Buffer,
   folder: string,
-  fileName: string
+  fileName: string,
+  resourceType: 'image' | 'raw' | 'video' | 'auto' = 'auto' // Added resourceType parameter
 ): Promise<string> {
   return new Promise((resolve, reject) => {
+    // Ensure public_id does not include the extension for 'raw' files if Cloudinary handles it by format
+    // For 'raw' files, often better to let Cloudinary append format or use it in URL, not in public_id
+    const dotIndex = fileName.lastIndexOf('.');
+    const publicIdBase = dotIndex === -1 ? fileName : fileName.substring(0, dotIndex);
+
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder: folder,
-        public_id: fileName.substring(0, fileName.lastIndexOf('.')), // Use filename without extension as public_id
-        resource_type: 'auto', // auto-detects image or raw for PDFs
+        public_id: publicIdBase,
+        resource_type: resourceType, 
         overwrite: true,
+        format: resourceType === 'raw' && dotIndex !== -1 ? fileName.substring(dotIndex + 1) : undefined, // Explicitly set format for raw if needed
       },
       (error, result) => {
         if (error) {
@@ -37,3 +44,4 @@ export async function uploadStreamToCloudinary(
     uploadStream.end(fileBuffer);
   });
 }
+
