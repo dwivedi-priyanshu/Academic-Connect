@@ -208,9 +208,23 @@ export default function AdminAssignmentsPage() {
 
   const TableSkeleton = () => (
     <Table>
-        <TableHeader><TableRow><Skeleton className="h-6 w-1/4" /><Skeleton className="h-6 w-1/4" /><Skeleton className="h-6 w-1/4" /><Skeleton className="h-6 w-1/4" /></TableRow></TableHeader>
+        <TableHeader>
+            <TableRow>
+                <TableHead><Skeleton className="h-6 w-full"/></TableHead>
+                <TableHead><Skeleton className="h-6 w-full"/></TableHead>
+                <TableHead><Skeleton className="h-6 w-full"/></TableHead>
+                <TableHead className="text-right"><Skeleton className="h-6 w-16 ml-auto"/></TableHead>
+            </TableRow>
+        </TableHeader>
         <TableBody>
-            {[...Array(3)].map((_, i) => (<TableRow key={i}><TableCell><Skeleton className="h-5 w-full"/></TableCell><TableCell><Skeleton className="h-5 w-full"/></TableCell><TableCell><Skeleton className="h-5 w-full"/></TableCell><TableCell><Skeleton className="h-5 w-16"/></TableCell></TableRow>))}
+            {[...Array(3)].map((_, i) => (
+                <TableRow key={i}>
+                    <TableCell><Skeleton className="h-5 w-full"/></TableCell>
+                    <TableCell><Skeleton className="h-5 w-full"/></TableCell>
+                    <TableCell><Skeleton className="h-5 w-full"/></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-5 w-16 ml-auto"/></TableCell>
+                </TableRow>
+            ))}
         </TableBody>
     </Table>
   );
