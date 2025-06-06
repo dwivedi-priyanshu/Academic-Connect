@@ -17,29 +17,35 @@ export async function uploadStreamToCloudinary(
   resourceType: 'image' | 'raw' | 'video' | 'auto' = 'auto'
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const uploadOptions: cloudinary.UploadApiOptions = {
-      folder: folder,
-      overwrite: true,
-      resource_type: resourceType,
-    };
+    let uploadOptions: cloudinary.UploadApiOptions;
+
+    // Determine baseName and extension from fileName
+    const dotIndex = fileName.lastIndexOf('.');
+    const baseName = dotIndex !== -1 ? fileName.substring(0, dotIndex) : fileName;
+    const extension = dotIndex !== -1 ? fileName.substring(dotIndex + 1).toLowerCase() : '';
 
     if (resourceType === 'raw') {
-      // For 'raw' files, the public_id should include the file extension.
-      // We don't set the 'format' parameter explicitly here, letting Cloudinary use the extension in public_id.
-      uploadOptions.public_id = fileName; // e.g., "report.pdf"
-      // 'format' is intentionally not set for raw files when extension is in public_id
+      // For 'raw' files (like PDFs), public_id should include the full filename with extension.
+      // 'format' should not be specified.
+      uploadOptions = {
+        resource_type: 'raw',
+        folder: folder,
+        overwrite: true,
+        public_id: fileName, // e.g., "document.pdf"
+      };
     } else {
-      // For 'image', 'video', 'auto', it's common to separate public_id (base name) and format (extension).
-      const dotIndex = fileName.lastIndexOf('.');
-      if (dotIndex !== -1) {
-        uploadOptions.public_id = fileName.substring(0, dotIndex); // e.g., "image_name"
-        uploadOptions.format = fileName.substring(dotIndex + 1);    // e.g., "png"
-      } else {
-        // If no extension, use the full fileName as public_id; Cloudinary might auto-detect format for 'auto' type.
-        uploadOptions.public_id = fileName;
+      // For 'image', 'video', 'auto' resource types
+      uploadOptions = {
+        resource_type: resourceType, // This could be 'auto', 'image', or 'video'
+        folder: folder,
+        overwrite: true,
+        public_id: baseName, // e.g., "my_image" (without extension)
+      };
+      if (extension) {
+        uploadOptions.format = extension; // e.g., "png"
       }
     }
-
+    
     const finalPublicIdForLog = uploadOptions.public_id;
     const finalFormatForLog = uploadOptions.format;
 
@@ -48,9 +54,13 @@ export async function uploadStreamToCloudinary(
       (error, result) => {
         if (error) {
           console.error('Cloudinary Upload Error:', error);
-          console.error('Upload Options used:', { folder, public_id: finalPublicIdForLog, resource_type: resourceType, format: finalFormatForLog });
+          console.error('Upload Options used:', { folder, public_id: finalPublicIdForLog, resource_type: uploadOptions.resource_type, format: finalFormatForLog });
           reject(error);
         } else if (result) {
+          // Check if the result URL is for an image when we expected raw, or vice-versa
+          if (resourceType === 'raw' && result.resource_type !== 'raw') {
+            console.warn(`Cloudinary Warning: Expected 'raw' resource_type, but received '${result.resource_type}'. URL: ${result.secure_url}`);
+          }
           resolve(result.secure_url);
         } else {
           reject(new Error('Cloudinary upload failed without error object'));
