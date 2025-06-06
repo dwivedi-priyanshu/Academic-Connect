@@ -5,60 +5,63 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, Bell, BarChart as BarChartIcon, PieChart } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, Bell, BarChart as BarChartIcon } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useEffect, useMemo } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from '@/components/ui/skeleton';
-import { fetchStudentMarksAction } from '@/actions/student-data-actions';
-import type { SubjectMark } from '@/types';
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
-import { useToast } from "@/hooks/use-toast";
+// Chart related imports are removed as the chart is being removed from this page.
+// import { useState, useEffect, useMemo } from 'react';
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+// import { Skeleton } from '@/components/ui/skeleton';
+// import { fetchStudentMarksAction } from '@/actions/student-data-actions';
+// import type { SubjectMark } from '@/types';
+// import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+// import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+// import { useToast } from "@/hooks/use-toast";
 
 
-const chartConfig = {
-  ia1: { label: "IAT 1 (Max 50)", color: "hsl(var(--chart-1))" },
-  ia2: { label: "IAT 2 (Max 50)", color: "hsl(var(--chart-2))" },
-} satisfies ChartConfig;
+// chartConfig is removed as the chart is being removed
+// const chartConfig = {
+//   ia1: { label: "IAT 1 (Max 50)", color: "hsl(var(--chart-1))" },
+//   ia2: { label: "IAT 2 (Max 50)", color: "hsl(var(--chart-2))" },
+// } satisfies ChartConfig;
 
 const StudentDashboard = () => {
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const [marksForChart, setMarksForChart] = useState<SubjectMark[]>([]);
-  const [isLoadingMarks, setIsLoadingMarks] = useState(true);
-  const [selectedSemesterForChart, setSelectedSemesterForChart] = useState<string>("1"); // Default to sem 1
-  const semestersForSelector = ["1", "2", "3", "4", "5", "6", "7", "8"];
+  // State and effects related to chart data fetching are removed
+  // const { user } = useAuth(); // user is still needed for general dashboard logic if any, or can be removed if not used
+  // const { toast } = useToast();
+  // const [marksForChart, setMarksForChart] = useState<SubjectMark[]>([]);
+  // const [isLoadingMarks, setIsLoadingMarks] = useState(true);
+  // const [selectedSemesterForChart, setSelectedSemesterForChart] = useState<string>("1"); 
+  // const semestersForSelector = ["1", "2", "3", "4", "5", "6", "7", "8"];
 
-  useEffect(() => {
-    if (user && user.role === 'Student') {
-      setIsLoadingMarks(true);
-      const semesterNumber = parseInt(selectedSemesterForChart, 10);
+  // useEffect(() => {
+  //   if (user && user.role === 'Student') {
+  //     setIsLoadingMarks(true);
+  //     const semesterNumber = parseInt(selectedSemesterForChart, 10);
       
-      fetchStudentMarksAction(user.id, semesterNumber)
-        .then(data => {
-          setMarksForChart(data);
-          setIsLoadingMarks(false);
-        })
-        .catch(error => {
-           console.error("Failed to fetch marks for chart:", error);
-           toast({ title: "Error", description: "Could not load marks for the chart.", variant: "destructive" });
-           setIsLoadingMarks(false);
-        });
-    } else {
-      setIsLoadingMarks(false); 
-    }
-  }, [user, selectedSemesterForChart, toast]);
+  //     fetchStudentMarksAction(user.id, semesterNumber)
+  //       .then(data => {
+  //         setMarksForChart(data);
+  //         setIsLoadingMarks(false);
+  //       })
+  //       .catch(error => {
+  //          console.error("Failed to fetch marks for chart:", error);
+  //          toast({ title: "Error", description: "Could not load marks for the chart.", variant: "destructive" });
+  //          setIsLoadingMarks(false);
+  //       });
+  //   } else {
+  //     setIsLoadingMarks(false); 
+  //   }
+  // }, [user, selectedSemesterForChart, toast]);
 
-  const marksChartData = useMemo(() => {
-    if (!marksForChart || marksForChart.length === 0) return [];
-    return marksForChart.map(mark => ({
-      subjectName: mark.subjectName.length > 15 ? `${mark.subjectName.substring(0,15)}...` : mark.subjectName, // Truncate long names
-      subjectCode: mark.subjectCode,
-      ia1: mark.ia1_50,
-      ia2: mark.ia2_50,
-    })).filter(mark => mark.ia1 !== null || mark.ia2 !== null); // Only include subjects with at least one IA mark
-  }, [marksForChart]);
+  // const marksChartData = useMemo(() => {
+  //   if (!marksForChart || marksForChart.length === 0) return [];
+  //   return marksForChart.map(mark => ({
+  //     subjectName: mark.subjectName.length > 15 ? `${mark.subjectName.substring(0,15)}...` : mark.subjectName,
+  //     subjectCode: mark.subjectCode,
+  //     ia1: mark.ia1_50,
+  //     ia2: mark.ia2_50,
+  //   })).filter(mark => mark.ia1 !== null || mark.ia2 !== null); 
+  // }, [marksForChart]);
 
 
   return (
@@ -110,6 +113,8 @@ const StudentDashboard = () => {
         </Card>
       </div>
 
+      {/* Chart Card and related JSX removed from here */}
+      {/* 
       <Card className="shadow-lg mt-8 col-span-1 md:col-span-2 lg:col-span-3">
         <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -139,11 +144,10 @@ const StudentDashboard = () => {
               <BarChart accessibilityLayer data={marksChartData} margin={{ top: 20, right: 0, left: -20, bottom: 5 }}>
                 <CartesianGrid vertical={false} />
                 <XAxis
-                  dataKey="subjectCode" // Using subject code for brevity on X-axis
+                  dataKey="subjectCode" 
                   tickLine={false}
                   tickMargin={10}
                   axisLine={false}
-                  // tickFormatter={(value) => value.length > 10 ? `${value.substring(0,10)}...` : value} // Handled in useMemo now
                 />
                 <YAxis tickLine={false} axisLine={false} domain={[0, 50]}/>
                 <Tooltip
@@ -179,6 +183,7 @@ const StudentDashboard = () => {
           )}
         </CardContent>
       </Card>
+      */}
     </>
   );
 }
