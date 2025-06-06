@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,7 +16,8 @@ import {
   ShieldCheck,
   LayoutDashboard,
   GraduationCap,
-  BarChart, // Import BarChart icon
+  BarChart, 
+  Settings2 // Import Settings2 for assignments
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -32,18 +34,19 @@ export interface NavItem {
 
 const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Student', 'Faculty', 'Admin'], exact: true },
-  { href: '/profile', label: 'Profile', icon: UserCircle, roles: ['Student', 'Faculty'] },
+  { href: '/profile', label: 'Profile', icon: UserCircle, roles: ['Student', 'Faculty', 'Admin'] }, // Admin can view their own profile
   // Student specific
   { href: '/academics/marks', label: 'My Marks', icon: ClipboardList, roles: ['Student'] },
   { href: '/academics/projects', label: 'My Projects', icon: FileText, roles: ['Student'] },
   { href: '/academics/moocs', label: 'My MOOCs', icon: BookOpen, roles: ['Student'] },
   // Faculty specific
-  { href: '/faculty/students', label: 'Student List', icon: Users, roles: ['Faculty'] }, // Renamed for clarity
+  { href: '/faculty/students', label: 'Student List', icon: Users, roles: ['Faculty'] }, 
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
   { href: '/faculty/approvals', label: 'Approvals', icon: CheckSquare, roles: ['Faculty'] },
-  { href: '/faculty/performance-analysis', label: 'Performance Analysis', icon: BarChart, roles: ['Faculty'] }, // New item
+  { href: '/faculty/performance-analysis', label: 'Performance Analysis', icon: BarChart, roles: ['Faculty'] },
   // Admin specific
   { href: '/admin/users', label: 'User Management', icon: ShieldCheck, roles: ['Admin'] },
+  { href: '/admin/assignments', label: 'Assignments', icon: Settings2, roles: ['Admin'] }, // New Admin page
 ];
 
 export function AppSidebar() {
@@ -82,3 +85,4 @@ export function AppSidebar() {
     </aside>
   );
 }
+

@@ -91,7 +91,6 @@ export interface MoocCourse {
   remarks?: string;
 }
 
-// Added for enhanced MOOC data in approvals
 export interface MoocCourseWithStudentInfo extends MoocCourse {
   studentName: string;
   studentSemester: number;
@@ -101,9 +100,10 @@ export interface MoocCourseWithStudentInfo extends MoocCourse {
 export interface FacultySubjectAssignment {
   _id?: any;
   id: string;
-  facultyId: string; // User ID of the faculty
+  facultyId: string; 
+  facultyName?: string; // Added for easier display on admin page
   subjectCode: string;
-  subjectName: string; // For easier display
+  subjectName: string; 
   semester: number;
   section: string;
 }
@@ -111,8 +111,9 @@ export interface FacultySubjectAssignment {
 export interface MoocCoordinatorAssignment {
   _id?: any;
   id: string;
-  facultyId: string; // User ID of the faculty assigned as MOOC coordinator
-  semester: number; // The semester for which they are the coordinator
+  facultyId: string; 
+  facultyName?: string; // Added for easier display on admin page
+  semester: number; 
 }
 
 
