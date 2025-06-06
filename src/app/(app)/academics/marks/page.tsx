@@ -5,12 +5,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
 import type { SubjectMark } from '@/types';
-import { ClipboardList, Percent } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ClipboardList, Percent, BarChart as BarChartIcon, PieChart } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from '@/components/ui/skeleton';
-import { fetchStudentMarksAction } from '@/actions/student-data-actions'; // Import the server action
+import { fetchStudentMarksAction } from '@/actions/student-data-actions';
 import { useToast } from "@/hooks/use-toast";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+
+const chartConfig = {
+  ia1: { label: "IAT 1 (Max 50)", color: "hsl(var(--chart-1))" },
+  ia2: { label: "IAT 2 (Max 50)", color: "hsl(var(--chart-2))" },
+} satisfies ChartConfig;
 
 
 export default function MarksPage() {
@@ -40,6 +47,16 @@ export default function MarksPage() {
       setIsLoading(false); 
     }
   }, [user, selectedSemester, toast]);
+
+  const marksChartData = useMemo(() => {
+    if (!marksForSemester || marksForSemester.length === 0) return [];
+    return marksForSemester.map(mark => ({
+      subjectName: mark.subjectName.length > 15 ? `${mark.subjectName.substring(0,15)}...` : mark.subjectName,
+      subjectCode: mark.subjectCode,
+      ia1: mark.ia1_50,
+      ia2: mark.ia2_50,
+    })).filter(mark => mark.ia1 !== null || mark.ia2 !== null);
+  }, [marksForSemester]);
 
 
   if (!user || user.role !== 'Student') {
@@ -123,6 +140,58 @@ export default function MarksPage() {
           )}
         </CardContent>
       </Card>
+
+      {marksChartData.length > 0 && !isLoading && (
+         <Card className="shadow-lg mt-8">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2"><BarChartIcon className="text-primary" /> Internal Assessment Performance</CardTitle>
+                <CardDescription>IAT 1 vs IAT 2 marks for Semester {selectedSemester}.</CardDescription>
+            </CardHeader>
+            <CardContent className="pl-2 pr-6">
+                <ChartContainer config={chartConfig} className="h-[350px] w-full">
+                <BarChart accessibilityLayer data={marksChartData} margin={{ top: 20, right: 0, left: -20, bottom: 5 }}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis
+                    dataKey="subjectCode"
+                    tickLine={false}
+                    tickMargin={10}
+                    axisLine={false}
+                    />
+                    <YAxis tickLine={false} axisLine={false} domain={[0, 50]}/>
+                    <Tooltip
+                        cursor={false}
+                        content={
+                            <ChartTooltipContent 
+                                indicator="dot"
+                                formatter={(value, name, props) => {
+                                    const { subjectName } = props.payload;
+                                    return (
+                                    <div className="flex flex-col">
+                                        <span className="font-medium">{subjectName} ({props.payload.subjectCode})</span>
+                                        <span className="text-muted-foreground">
+                                        {name === 'ia1' ? chartConfig.ia1.label : chartConfig.ia2.label}: {value}
+                                        </span>
+                                    </div>
+                                    );
+                                }}
+                            />
+                        }
+                    />
+                    <Legend />
+                    <Bar dataKey="ia1" fill="var(--color-ia1)" radius={4} barSize={30} />
+                    <Bar dataKey="ia2" fill="var(--color-ia2)" radius={4} barSize={30} />
+                </BarChart>
+                </ChartContainer>
+            </CardContent>
+         </Card>
+      )}
+       {marksChartData.length === 0 && !isLoading && marksForSemester.length > 0 && (
+         <div className="text-center py-8 text-muted-foreground mt-4">
+            <PieChart className="mx-auto h-10 w-10 mb-2" />
+            <p>No Internal Assessment (IA) marks entered yet for Semester {selectedSemester} to display the chart.</p>
+        </div>
+      )}
     </div>
   );
 }
+
