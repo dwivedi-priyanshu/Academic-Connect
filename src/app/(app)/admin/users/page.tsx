@@ -1,14 +1,15 @@
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass, KeyRound } from 'lucide-react';
+import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass, KeyRound, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { User, UserStatus } from '@/types'; 
-import { useState, useEffect } from 'react';
+import type { User, UserStatus, StudentProfile } from '@/types'; 
+import { useState, useEffect, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fetchAllUsersAction, updateUserStatusAction } from '@/actions/profile-actions';
+import { fetchAllUsersAction, updateUserStatusAction, fetchStudentFullProfileDataAction, saveStudentProfileDataAction } from '@/actions/profile-actions';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +17,12 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
+const SECTIONS = ["A", "B", "C", "D"];
+// A basic list of departments. This could come from a central config or DB in a larger app.
+const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical", "Information Science", "Biotechnology", "Aerospace"];
 
 
 export default function AdminUsersPage() {
@@ -29,28 +36,30 @@ export default function AdminUsersPage() {
   const [selectedUserForApproval, setSelectedUserForApproval] = useState<User | null>(null);
   const [admissionIdInput, setAdmissionIdInput] = useState("");
 
+  const [isEditStudentModalOpen, setIsEditStudentModalOpen] = useState(false);
+  const [editingStudentUser, setEditingStudentUser] = useState<User | null>(null);
+  const [editingStudentProfile, setEditingStudentProfile] = useState<Partial<StudentProfile>>({});
+  const [isSavingStudentProfile, setIsSavingStudentProfile] = useState(false);
 
-  const loadUsers = (statusFilter?: UserStatus | 'all') => {
+
+  const loadUsers = useCallback((statusFilter?: UserStatus | 'all') => {
     if (user && user.role === 'Admin') {
         setIsLoading(true);
         const filters = statusFilter && statusFilter !== 'all' ? { status: statusFilter } : {};
         fetchAllUsersAction(filters).then(data => {
             setAllUsers(data);
-            setIsLoading(false);
         }).catch(err => {
             console.error("Error fetching users:", err);
             toast({ title: "Error", description: "Could not load user list.", variant: "destructive" });
-            setIsLoading(false);
-        });
+        }).finally(() => setIsLoading(false));
     } else {
         setIsLoading(false);
     }
-  }
+  }, [user, toast]);
 
   useEffect(() => {
     loadUsers(activeTab);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, activeTab]); 
+  }, [activeTab, loadUsers]); 
 
   const handleOpenUsnModal = (userToApprove: User) => {
     setSelectedUserForApproval(userToApprove);
@@ -68,9 +77,7 @@ export default function AdminUsersPage() {
     try {
         const success = await updateUserStatusAction(selectedUserForApproval.id, 'Active', admissionIdInput.trim().toUpperCase());
         if (success) {
-            // Changed description string construction
-            const descriptionMessage = "The account for " + selectedUserForApproval.name + 
-                                     " is now Active with USN: " + admissionIdInput.trim().toUpperCase() + ".";
+            const descriptionMessage = `The account for ${selectedUserForApproval.name} is now Active with USN: ${admissionIdInput.trim().toUpperCase()}.`;
             toast({ 
                 title: "Student Approved", 
                 description: descriptionMessage, 
@@ -113,6 +120,82 @@ export default function AdminUsersPage() {
         setIsLoading(false);
     }
   };
+
+  const handleOpenEditStudentModal = async (studentUser: User) => {
+    setEditingStudentUser(studentUser);
+    setIsSavingStudentProfile(true); // Use this for loading state of the modal
+    try {
+      const profile = await fetchStudentFullProfileDataAction(studentUser.id);
+      if (profile) {
+        setEditingStudentProfile({
+          id: profile.id,
+          userId: profile.userId,
+          admissionId: profile.admissionId,
+          fullName: profile.fullName, // Keep it from profile, though user.name should match
+          department: profile.department,
+          year: profile.year,
+          currentSemester: profile.currentSemester,
+          section: profile.section,
+          // Include other fields if they were intended to be editable by admin, for now focus on academic
+          dateOfBirth: profile.dateOfBirth,
+          contactNumber: profile.contactNumber,
+          address: profile.address,
+          parentName: profile.parentName,
+          parentContact: profile.parentContact,
+          fatherName: profile.fatherName,
+          motherName: profile.motherName,
+          gender: profile.gender,
+          bloodGroup: profile.bloodGroup,
+          aadharNumber: profile.aadharNumber,
+          category: profile.category,
+          religion: profile.religion,
+          nationality: profile.nationality,
+          sslcMarks: profile.sslcMarks,
+          pucMarks: profile.pucMarks,
+          avatar: profile.avatar
+        });
+        setIsEditStudentModalOpen(true);
+      } else {
+        toast({ title: "Error", description: "Could not load student profile data for editing.", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to fetch student details for editing.", variant: "destructive" });
+    } finally {
+      setIsSavingStudentProfile(false);
+    }
+  };
+
+  const handleSaveStudentProfileChanges = async () => {
+    if (!editingStudentProfile || !editingStudentProfile.id) {
+        toast({ title: "Error", description: "No student profile data to save.", variant: "destructive" });
+        return;
+    }
+    setIsSavingStudentProfile(true);
+    try {
+        const success = await saveStudentProfileDataAction(editingStudentProfile as StudentProfile);
+        if (success) {
+            toast({ title: "Profile Saved", description: `${editingStudentProfile.fullName}'s profile updated successfully.`, className: "bg-success text-success-foreground" });
+            setIsEditStudentModalOpen(false);
+            loadUsers(activeTab); // Refresh the list
+        } else {
+            toast({ title: "Save Failed", description: "Could not save student profile changes.", variant: "destructive" });
+        }
+    } catch (error) {
+        toast({ title: "Save Error", description: `An error occurred: ${(error as Error).message}`, variant: "destructive" });
+    } finally {
+        setIsSavingStudentProfile(false);
+    }
+  };
+  
+  const handleEditProfileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setEditingStudentProfile(prev => ({ ...prev, [name]: (name === 'year' || name === 'currentSemester') ? (parseInt(value) || undefined) : value }));
+  };
+
+  const handleEditProfileSelectChange = (name: string, value: string) => {
+    setEditingStudentProfile(prev => ({ ...prev, [name]: (name === 'year' || name === 'currentSemester') ? parseInt(value) : value }));
+  };
+
 
   const StatusBadge = ({ status }: { status: UserStatus }) => {
     let IconComponent = Hourglass;
@@ -183,7 +266,7 @@ export default function AdminUsersPage() {
           <CardDescription>Manage user accounts, roles, and statuses. Students require USN assignment upon approval.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && !isUsnModalOpen ? ( 
+          {isLoading && !isUsnModalOpen && !isEditStudentModalOpen ? ( 
             <Table>
                 <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                 <TableBody>
@@ -193,7 +276,10 @@ export default function AdminUsersPage() {
                             <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                             <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                             <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                            <TableCell className="text-right space-x-1"><Skeleton className="h-8 w-20 inline-block" /><Skeleton className="h-8 w-20 inline-block" /></TableCell>
+                            <TableCell className="text-right space-x-1">
+                                <Skeleton className="h-8 w-20 inline-block" />
+                                <Skeleton className="h-8 w-20 inline-block" />
+                            </TableCell>
                         </TableRow>
                     ))}
                 </TableBody>
@@ -206,7 +292,7 @@ export default function AdminUsersPage() {
                         <TableHead>Email</TableHead>
                         <TableHead className="w-[100px]">Role</TableHead>
                         <TableHead className="w-[120px]">Status</TableHead>
-                        <TableHead className="text-right w-[220px]">Actions</TableHead>
+                        <TableHead className="text-right w-[280px]">Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -235,6 +321,11 @@ export default function AdminUsersPage() {
                                 {(u.status === 'Rejected' || u.status === 'Disabled') && (
                                      <Button variant="ghost" size="sm" className="text-success hover:bg-success/10 hover:text-success" onClick={() => handleUpdateStatus(u, 'Active')} disabled={isLoading}>
                                         <CheckCircle className="mr-1 h-4 w-4"/> Re-Activate
+                                    </Button>
+                                )}
+                                {u.role === 'Student' && (
+                                    <Button variant="ghost" size="sm" onClick={() => handleOpenEditStudentModal(u)} disabled={isLoading}>
+                                        <Edit className="mr-1 h-4 w-4"/> Edit Profile
                                     </Button>
                                 )}
                             </TableCell>
@@ -284,6 +375,105 @@ export default function AdminUsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Student Profile Dialog */}
+      <Dialog open={isEditStudentModalOpen} onOpenChange={(isOpen) => {
+          setIsEditStudentModalOpen(isOpen);
+          if (!isOpen) {
+            setEditingStudentUser(null);
+            setEditingStudentProfile({});
+          }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Student Details: {editingStudentUser?.name}</DialogTitle>
+            <DialogDescription>
+              Update academic details for {editingStudentUser?.email}.
+              USN: {editingStudentProfile.admissionId} (Cannot be changed here)
+            </DialogDescription>
+          </DialogHeader>
+          {isSavingStudentProfile && !Object.keys(editingStudentProfile).length ? <Skeleton className="h-48 w-full"/> : (
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                    <Label htmlFor="edit-department">Department</Label>
+                    <Select
+                        name="department"
+                        value={editingStudentProfile.department || ""}
+                        onValueChange={(value) => handleEditProfileSelectChange('department', value)}
+                        disabled={isSavingStudentProfile}
+                    >
+                        <SelectTrigger id="edit-department" className="bg-background">
+                            <SelectValue placeholder="Select Department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {DEPARTMENTS.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="space-y-1">
+                    <Label htmlFor="edit-year">Year</Label>
+                    <Select
+                        name="year"
+                        value={String(editingStudentProfile.year || "")}
+                        onValueChange={(value) => handleEditProfileSelectChange('year', value)}
+                        disabled={isSavingStudentProfile}
+                    >
+                        <SelectTrigger id="edit-year" className="bg-background">
+                            <SelectValue placeholder="Select Year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {[1, 2, 3, 4].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                 <div className="space-y-1">
+                    <Label htmlFor="edit-currentSemester">Current Semester</Label>
+                    <Select
+                        name="currentSemester"
+                        value={String(editingStudentProfile.currentSemester || "")}
+                        onValueChange={(value) => handleEditProfileSelectChange('currentSemester', value)}
+                        disabled={isSavingStudentProfile}
+                    >
+                        <SelectTrigger id="edit-currentSemester" className="bg-background">
+                            <SelectValue placeholder="Select Semester" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="space-y-1">
+                    <Label htmlFor="edit-section">Section</Label>
+                    <Select
+                        name="section"
+                        value={editingStudentProfile.section || ""}
+                        onValueChange={(value) => handleEditProfileSelectChange('section', value)}
+                        disabled={isSavingStudentProfile}
+                    >
+                        <SelectTrigger id="edit-section" className="bg-background">
+                            <SelectValue placeholder="Select Section" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {SECTIONS.map(sec => <SelectItem key={sec} value={sec}>{sec}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+          </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditStudentModalOpen(false)} disabled={isSavingStudentProfile}>Cancel</Button>
+            <Button onClick={handleSaveStudentProfileChanges} className="bg-primary hover:bg-primary/90" disabled={isSavingStudentProfile || !Object.keys(editingStudentProfile).length}>
+              <Save className="mr-2 h-4 w-4" /> {isSavingStudentProfile ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
+
