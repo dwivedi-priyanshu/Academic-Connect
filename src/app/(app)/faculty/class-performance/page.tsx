@@ -1,14 +1,14 @@
 
 'use client';
 
-import React from 'react'; // Added missing React import
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
 import type { StudentClassPerformanceDetails, SubjectMark } from '@/types';
-import { BarChart2, Info, Users, Percent, TrendingUp, TrendingDown, CheckSquare, XSquare } from 'lucide-react';
+import { BarChart2, Info, Users, Percent, TrendingUp, TrendingDown, CheckSquare, XSquare, Building } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { fetchAllMarksForClassAction } from '@/actions/marks-actions';
@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ALL_SUBJECTS_BY_SEMESTER } from '@/lib/subjects';
 import { Label } from '@/components/ui/label';
 
+const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical"];
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
 
@@ -29,6 +30,7 @@ interface SubjectPerformanceSummary {
 export default function ClassPerformancePage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("");
   const [selectedSemester, setSelectedSemester] = useState<string>("");
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [classPerformanceData, setClassPerformanceData] = useState<StudentClassPerformanceDetails[]>([]);
@@ -40,10 +42,10 @@ export default function ClassPerformancePage() {
   }, [selectedSemester]);
 
   useEffect(() => {
-    if (user && user.role === 'Faculty' && selectedSemester && selectedSection) {
+    if (user && user.role === 'Faculty' && selectedDepartment && selectedSemester && selectedSection) {
       setIsLoading(true);
       setInitialLoadAttempted(true);
-      fetchAllMarksForClassAction(parseInt(selectedSemester), selectedSection)
+      fetchAllMarksForClassAction(parseInt(selectedSemester), selectedSection, selectedDepartment)
         .then(data => {
           setClassPerformanceData(data);
           if (data.length === 0) {
@@ -60,7 +62,7 @@ export default function ClassPerformancePage() {
       setInitialLoadAttempted(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, selectedSemester, selectedSection, toast]);
+  }, [user, selectedDepartment, selectedSemester, selectedSection, toast]);
 
   const performanceSummaryBySubject = useMemo(() => {
     const summary: Record<string, SubjectPerformanceSummary> = {};
@@ -77,7 +79,14 @@ export default function ClassPerformancePage() {
             const ia1 = typeof mark.ia1_50 === 'number' ? mark.ia1_50 : 0;
             const ia2 = typeof mark.ia2_50 === 'number' ? mark.ia2_50 : 0;
             const totalIA = ia1 + ia2;
-            if (totalIA >= 20) { // Assuming pass mark is 20 for sum of two IAs (50+50 scaled or direct)
+            // Assuming pass mark is 40% of total IA marks (e.g., 40 out of 100 if scaled, or 20 if each IA is 50 and sum considered)
+            // Let's consider 20 for IA1(50) + IA2(50) = 100 -> pass at 40. If directly considering 50, pass at 20 for each, average pass 20.
+            // For simplicity, we'll stick to the previous combined IA pass mark logic: sum of IA1 + IA2 >= 20 (out of a conceptual 50 max average if scaled, or 40 out of 100)
+            // This needs clarification based on actual marking scheme. Let's assume pass = 20 out of 50 for an IA average or 40% of total.
+            // If IA1 and IA2 are max 50 each, total 100. 40% is 40.
+            // The prompt mentioned: student is failed if he scores less than 20 out of combined marks for iat1 and iat 2
+            // This implies 20 is the pass mark for the sum.
+            if (totalIA >= 20) { 
                 summary[subject.code].passedCount++;
             } else {
                 summary[subject.code].failedCount++;
@@ -93,7 +102,7 @@ export default function ClassPerformancePage() {
     return <p>Access denied. This page is for faculty members only.</p>;
   }
 
-  const selectionMade = !!(selectedSemester && selectedSection);
+  const selectionMade = !!(selectedDepartment && selectedSemester && selectedSection);
 
   return (
     <div className="space-y-6">
@@ -102,12 +111,21 @@ export default function ClassPerformancePage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Select Class</CardTitle>
-          <CardDescription>Choose semester and section to view performance details.</CardDescription>
+          <CardDescription>Choose department, semester, and section to view performance details.</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-1">
+            <Label htmlFor="department" className="flex items-center"><Building className="mr-2 h-4 w-4 text-muted-foreground"/>Department</Label>
+            <Select value={selectedDepartment} onValueChange={(value) => {setSelectedDepartment(value); setSelectedSemester(''); setSelectedSection('');}}>
+              <SelectTrigger id="department"><SelectValue placeholder="Select Department" /></SelectTrigger>
+              <SelectContent>
+                {DEPARTMENTS.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1">
             <Label htmlFor="semester">Semester</Label>
-            <Select value={selectedSemester} onValueChange={setSelectedSemester}>
+            <Select value={selectedSemester} onValueChange={(value) => {setSelectedSemester(value); setSelectedSection('');}} disabled={!selectedDepartment}>
               <SelectTrigger id="semester"><SelectValue placeholder="Select Semester" /></SelectTrigger>
               <SelectContent>
                 {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
@@ -129,7 +147,7 @@ export default function ClassPerformancePage() {
       {selectionMade && (
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>Performance for Semester {selectedSemester}, Section {selectedSection}</CardTitle>
+            <CardTitle>Performance for {selectedDepartment} - Semester {selectedSemester}, Section {selectedSection}</CardTitle>
             <CardDescription>
               Showing IAT1 & IAT2 marks. Summary counts students with IA total &ge; 20 as Passed.
             </CardDescription>
@@ -138,7 +156,7 @@ export default function ClassPerformancePage() {
             {isLoading ? (
               <TableSkeleton rows={5} cols={subjectsForSelectedSemester.length * 2 + 2} />
             ) : initialLoadAttempted && classPerformanceData.length === 0 ? (
-              <p className="text-center py-8 text-muted-foreground">No student data found for this selection. Ensure students are enrolled and marks are entered.</p>
+              <p className="text-center py-8 text-muted-foreground">No student data found for this selection. Ensure students are enrolled and marks are entered for this department, semester and section.</p>
             ) : classPerformanceData.length > 0 && subjectsForSelectedSemester.length > 0 ? (
               <>
                 <div className="overflow-x-auto">
@@ -210,7 +228,7 @@ export default function ClassPerformancePage() {
         <Alert className="mt-6 bg-accent/20 border-accent text-accent-foreground">
           <Info className="h-5 w-5 text-accent" />
           <AlertTitle>Select Class to View Performance</AlertTitle>
-          <AlertDescription>Please select a semester and section above to load the class performance details.</AlertDescription>
+          <AlertDescription>Please select department, semester, and section above to load the class performance details.</AlertDescription>
         </Alert>
       )}
     </div>
@@ -234,4 +252,3 @@ const TableSkeleton = ({ rows, cols }: { rows: number, cols: number }) => (
     </TableBody>
   </Table>
 );
-

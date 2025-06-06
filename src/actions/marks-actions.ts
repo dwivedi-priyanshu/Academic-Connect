@@ -61,6 +61,9 @@ export async function fetchStudentProfilesForMarksEntry(
     console.log(`[MarksAction FetchProfiles] Found ${activeStudentUserIds.length} 'Active' student user IDs:`, activeStudentUserIds.length < 10 ? activeStudentUserIds : `Count: ${activeStudentUserIds.length}`);
 
     // 2. Fetch student profiles matching currentSemester, section, and active user IDs
+    // Department filter is implicitly handled by how students are assigned to sections/semesters,
+    // or could be added here if sections are not unique across departments for a semester.
+    // For now, assuming section + semester is unique enough or faculty assignment handles department.
     const studentProfileQuery: Filter<StudentProfile> = {
         currentSemester: semester, 
         section,
@@ -336,10 +339,21 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
 export async function fetchAllMarksForClassAction(
   semester: number,
   section: string,
-  // department?: string // Department filter can be added later if needed for student profiles
+  department?: string 
 ): Promise<StudentClassPerformanceDetails[]> {
   try {
-    const studentsInClass = await fetchStudentsForFacultyAction('', { year: Math.ceil(semester / 2), section });
+    // Construct filters for fetchStudentsForFacultyAction
+    const filters: { year?: number; section?: string; department?: string } = {
+      year: Math.ceil(semester / 2),
+      section,
+    };
+    if (department) {
+      filters.department = department;
+    }
+
+    // Fetch students based on department, year (derived from semester), and section
+    const studentsInClass = await fetchStudentsForFacultyAction('', filters); 
+    
     if (studentsInClass.length === 0) {
       return [];
     }

@@ -5,7 +5,7 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { AppSidebar, type NavItem } from '@/components/layout/AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { GraduationCap, LayoutDashboard, UserCircle, ClipboardList, FileText, BookOpen, Users, Edit3, CheckSquare, ShieldCheck, BarChart2, Settings2, LibraryBig, UserSearch } from 'lucide-react'; // Added BarChart2, UserSearch
+import { GraduationCap, LayoutDashboard, UserCircle, ClipboardList, FileText, BookOpen, Users, Edit3, CheckSquare, ShieldCheck, BarChart2, Settings2, LibraryBig, UserSearch } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // Define nav items here so AppHeader can use them for mobile view
@@ -15,7 +15,7 @@ const allNavItems: NavItem[] = [
   { href: '/academics/marks', label: 'My Marks', icon: ClipboardList, roles: ['Student'] },
   { href: '/academics/projects', label: 'My Projects', icon: FileText, roles: ['Student'] },
   { href: '/academics/moocs', label: 'My MOOCs', icon: BookOpen, roles: ['Student'] },
-  { href: '/faculty/students', label: 'Students', icon: Users, roles: ['Faculty'] },
+  // { href: '/faculty/students', label: 'Students', icon: Users, roles: ['Faculty'] }, // Removed
   { href: '/faculty/student-lookup', label: 'Student Lookup', icon: UserSearch, roles: ['Faculty'] },
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
   { href: '/faculty/class-performance', label: 'Class Performance', icon: BarChart2, roles: ['Faculty'] },

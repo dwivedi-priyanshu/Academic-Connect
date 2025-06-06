@@ -16,10 +16,10 @@ import {
   ShieldCheck,
   LayoutDashboard,
   GraduationCap,
-  BarChart2, // Changed from BarChart for consistency
+  BarChart2, 
   Settings2, 
   LibraryBig,
-  UserSearch // Added for Student Lookup
+  UserSearch 
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -42,7 +42,7 @@ const navItems: NavItem[] = [
   { href: '/academics/projects', label: 'My Projects', icon: FileText, roles: ['Student'] },
   { href: '/academics/moocs', label: 'My MOOCs', icon: BookOpen, roles: ['Student'] },
   // Faculty specific
-  { href: '/faculty/students', label: 'Student List', icon: Users, roles: ['Faculty'] }, 
+  // { href: '/faculty/students', label: 'Student List', icon: Users, roles: ['Faculty'] }, // Removed as per request
   { href: '/faculty/student-lookup', label: 'Student Lookup', icon: UserSearch, roles: ['Faculty'] },
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
   { href: '/faculty/class-performance', label: 'Class Performance', icon: BarChart2, roles: ['Faculty'] },
