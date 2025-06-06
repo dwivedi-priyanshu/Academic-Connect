@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
 import type { MiniProject, SubmissionStatus, User, StudentProfile } from '@/types';
-import { FileText, UploadCloud, PlusCircle, Edit2, Trash2, CheckCircle, XCircle, Clock, UserCheck, CalendarDays } from 'lucide-react';
+import { FileText, UploadCloud, PlusCircle, Edit2, Trash2, CheckCircle, XCircle, Clock, UserCheck, CalendarDays, Download } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { FileUploadInput } from '@/components/core/FileUploadInput';
 import { useToast } from '@/hooks/use-toast';
@@ -20,7 +20,7 @@ import { fetchAllActiveFacultyAction } from '@/actions/faculty-actions';
 import { fetchStudentFullProfileDataAction } from '@/actions/profile-actions';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const initialProjectState: Omit<MiniProject, '_id' | 'submittedDate' | 'status' | 'submissionSemester'> & {id?: string} = {
+const initialProjectState: Omit<MiniProject, '_id' | 'submittedDate' | 'status' | 'submissionSemester' | 'pptUrl' | 'reportUrl'> & {id?: string, pptUrl?: string | undefined, reportUrl?: string | undefined} = {
   studentId: '', title: '', description: '', pptUrl: undefined, reportUrl: undefined, subject: '', guideId: undefined
 };
 
@@ -32,16 +32,16 @@ export default function ProjectsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [projects, setProjects] = useState<MiniProject[]>([]);
-  const [currentProject, setCurrentProject] = useState<Omit<MiniProject, '_id' | 'submittedDate' | 'status' | 'submissionSemester'> & {id?: string; status?: SubmissionStatus}>(initialProjectState);
+  const [currentProject, setCurrentProject] = useState<Omit<MiniProject, '_id' | 'submittedDate' | 'status' | 'submissionSemester' | 'pptUrl' | 'reportUrl'> & {id?: string; status?: SubmissionStatus; pptUrl?: string | undefined, reportUrl?: string | undefined}>(initialProjectState);
   const [isFormVisible, setIsFormVisible] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // General loading for list and profile
+  const [isLoading, setIsLoading] = useState(true); 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pptFile, setPptFile] = useState<File | null>(null);
   const [reportFile, setReportFile] = useState<File | null>(null);
   const [facultyList, setFacultyList] = useState<User[]>([]);
 
   const [studentCurrentSemester, setStudentCurrentSemester] = useState<number | null>(null);
-  const [selectedSemesterView, setSelectedSemesterView] = useState<string>('');
+  const [selectedSemesterView, setSelectedSemesterView] = useState<string>('loading-placeholder');
 
 
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function ProjectsPage() {
   }, [user, toast]);
 
   useEffect(() => {
-    if (user && user.role === 'Student' && selectedSemesterView) {
+    if (user && user.role === 'Student' && selectedSemesterView && selectedSemesterView !== 'loading-placeholder') {
       setIsLoading(true);
       const semesterToFetch = parseInt(selectedSemesterView, 10);
       fetchStudentProjectsAction(user.id, semesterToFetch)
@@ -106,25 +106,33 @@ export default function ProjectsPage() {
     e.preventDefault();
     if (!user || !studentCurrentSemester) return;
 
-    if (parseInt(selectedSemesterView) !== studentCurrentSemester) {
-        toast({ title: "Action Denied", description: "You can only add or edit projects for your current semester.", variant: "destructive"});
+    const isNew = !currentProject.id || currentProject.id === 'new';
+    if (parseInt(selectedSemesterView) !== studentCurrentSemester && isNew) {
+        toast({ title: "Action Denied", description: "You can only add new projects for your current semester.", variant: "destructive"});
         return;
     }
-    const isNew = !currentProject.id || currentProject.id === 'new';
+    
     if (isNew && !currentProject.guideId) {
         toast({ title: "Guide Required", description: "Please select a faculty guide for your new project proposal.", variant: "destructive"});
         return;
     }
     setIsSubmitting(true);
 
-    const projectToSave: Omit<MiniProject, '_id' | 'submittedDate' | 'status' | 'submissionSemester'> & {id?: string; status?: SubmissionStatus} = {
-      ...currentProject,
-      pptUrl: pptFile ? pptFile.name : currentProject.pptUrl,
-      reportUrl: reportFile ? reportFile.name : currentProject.reportUrl,
-    };
+    const formData = new FormData();
+    formData.append('id', currentProject.id || 'new');
+    formData.append('title', currentProject.title);
+    formData.append('description', currentProject.description);
+    formData.append('subject', currentProject.subject);
+    if (currentProject.guideId) formData.append('guideId', currentProject.guideId);
+    
+    if (currentProject.pptUrl) formData.append('existingPptUrl', currentProject.pptUrl);
+    if (currentProject.reportUrl) formData.append('existingReportUrl', currentProject.reportUrl);
+
+    if (pptFile) formData.append('pptFile', pptFile);
+    if (reportFile) formData.append('reportFile', reportFile);
 
     try {
-      const savedProject = await saveStudentProjectAction(projectToSave, user.id);
+      const savedProject = await saveStudentProjectAction(formData, user.id);
 
       if (savedProject.submissionSemester === parseInt(selectedSemesterView)) {
         setProjects(prev => {
@@ -137,13 +145,13 @@ export default function ProjectsPage() {
         toast({title: "Submission Recorded", description: `"${savedProject.title}" was submitted for Semester ${savedProject.submissionSemester}. You are currently viewing Semester ${selectedSemesterView}.`});
       }
 
-      const title = isNew ? "Project Proposal Submitted" : "Project Updated";
-      let description = `"${savedProject.title}" has been ${isNew ? 'submitted for approval' : 'updated'}.`;
+      const toastTitle = isNew ? "Project Proposal Submitted" : "Project Updated";
+      let toastDescription = `"${savedProject.title}" has been ${isNew ? 'submitted for approval' : 'updated'}.`;
       if (!isNew && currentProject.status === 'Approved') {
-        description = `Files uploaded/updated for "${savedProject.title}".`;
+        toastDescription = `Files uploaded/updated for "${savedProject.title}".`;
       }
 
-      toast({ title, description, className: "bg-success text-success-foreground" });
+      toast({ title: toastTitle, description: toastDescription, className: "bg-success text-success-foreground" });
 
       setCurrentProject({ ...initialProjectState, studentId: user.id, status: 'Pending' });
       setPptFile(null);
@@ -159,8 +167,7 @@ export default function ProjectsPage() {
 
   const handleEdit = (project: MiniProject) => {
     if (!studentCurrentSemester || project.submissionSemester !== studentCurrentSemester) {
-        toast({ title: "Action Denied", description: "You can only edit projects from your current semester.", variant: "default"});
-        return;
+        toast({ title: "Action Denied", description: "You can only edit projects from your current semester. Viewing details.", variant: "default"});
     }
     setCurrentProject(project);
     setPptFile(null);
@@ -232,13 +239,13 @@ export default function ProjectsPage() {
   const isApprovedProjectInForm = currentProject.status === 'Approved';
   const isPendingOrRejectedInForm = currentProject.status === 'Pending' || currentProject.status === 'Rejected';
 
-
   const getFormTitle = () => {
     if (!isFormVisible) return '';
+    if (!canInteractWithFormForCurrentSemester) return 'View Project Details';
     if (isNewProjectInForm) return 'Submit New Project Proposal';
     if (isApprovedProjectInForm) return 'Upload/Update Project Files';
     if (isPendingOrRejectedInForm) return 'Edit Project Details';
-    return 'View Project Details'; // Fallback, or for past semesters
+    return 'View Project Details'; 
   }
 
   const getFormDescription = () => {
@@ -257,6 +264,9 @@ export default function ProjectsPage() {
     return 'Update Details';
   };
 
+  const formIsReadOnly = isFormVisible && !canInteractWithFormForCurrentSemester;
+  const detailsAreReadOnly = formIsReadOnly || (canInteractWithFormForCurrentSemester && isApprovedProjectInForm);
+
 
   if (!user || user.role !== 'Student') {
     return <p>This page is for students to manage their projects.</p>;
@@ -271,10 +281,10 @@ export default function ProjectsPage() {
                 <Label htmlFor="semester-view-project" className="sr-only">View Semester</Label>
                 <Select value={selectedSemesterView} onValueChange={setSelectedSemesterView} disabled={isLoading || isSubmitting}>
                     <SelectTrigger id="semester-view-project">
-                         <SelectValue placeholder={studentCurrentSemester === null && isLoading ? "Loading sem..." : "Select Semester"} />
+                         <SelectValue placeholder={selectedSemesterView === 'loading-placeholder' ? "Loading sem..." : "Select Semester"} />
                     </SelectTrigger>
                     <SelectContent>
-                        {studentCurrentSemester === null && isLoading ? <SelectItem value="loading-placeholder" disabled>Loading...</SelectItem> :
+                        {selectedSemesterView === 'loading-placeholder' ? <SelectItem value="loading-placeholder" disabled>Loading...</SelectItem> :
                          SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem} {studentCurrentSemester === parseInt(sem) ? "(Current)" : ""}</SelectItem>)}
                     </SelectContent>
                 </Select>
@@ -307,7 +317,7 @@ export default function ProjectsPage() {
                     onChange={handleInputChange}
                     required
                     className="bg-background"
-                    disabled={!canInteractWithFormForCurrentSemester || isApprovedProjectInForm || isSubmitting}
+                    disabled={detailsAreReadOnly || isSubmitting}
                   />
                 </div>
                  <div className="space-y-1">
@@ -317,7 +327,7 @@ export default function ProjectsPage() {
                     value={currentProject.subject}
                     onValueChange={(value) => handleSelectChange('subject', value)}
                     required
-                    disabled={!canInteractWithFormForCurrentSemester || isApprovedProjectInForm || isSubmitting}
+                    disabled={detailsAreReadOnly || isSubmitting}
                   >
                     <SelectTrigger className="bg-background">
                       <SelectValue placeholder="Select subject" />
@@ -337,7 +347,7 @@ export default function ProjectsPage() {
                   onChange={handleInputChange}
                   required
                   className="bg-background"
-                  disabled={!canInteractWithFormForCurrentSemester || isApprovedProjectInForm || isSubmitting}
+                  disabled={detailsAreReadOnly || isSubmitting}
                 />
               </div>
 
@@ -350,7 +360,7 @@ export default function ProjectsPage() {
                     value={currentProject.guideId || ''}
                     onValueChange={(value) => handleSelectChange('guideId', value)}
                     required={isNewProjectInForm && canInteractWithFormForCurrentSemester}
-                    disabled={!canInteractWithFormForCurrentSemester || (!isNewProjectInForm && !!currentProject.guideId) || isSubmitting}
+                    disabled={detailsAreReadOnly || (!isNewProjectInForm && !!currentProject.guideId) || isSubmitting}
                 >
                     <SelectTrigger className="bg-background">
                     <SelectValue placeholder="Select a faculty guide" />
@@ -370,8 +380,8 @@ export default function ProjectsPage() {
                 </div>
 
 
-              {/* File Uploads Section - only if approved and for current semester */}
-              {canInteractWithFormForCurrentSemester && isApprovedProjectInForm && (
+              {/* File Uploads Section - only if approved and for current semester, or if not approved but for current semester */}
+              {canInteractWithFormForCurrentSemester && (isApprovedProjectInForm || isPendingOrRejectedInForm || isNewProjectInForm) && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4 mt-4 border-dashed">
                   <FileUploadInput
                     id="pptFile"
@@ -379,7 +389,7 @@ export default function ProjectsPage() {
                     onFileChange={setPptFile}
                     accept=".pdf"
                     currentFile={currentProject.pptUrl}
-                    disabled={isSubmitting}
+                    disabled={formIsReadOnly || isSubmitting}
                   />
                   <FileUploadInput
                     id="reportFile"
@@ -387,14 +397,14 @@ export default function ProjectsPage() {
                     onFileChange={setReportFile}
                     accept=".pdf"
                     currentFile={currentProject.reportUrl}
-                    disabled={isSubmitting}
+                    disabled={formIsReadOnly || isSubmitting}
                   />
                 </div>
               )}
 
               {/* Submit Button Logic */}
               {canInteractWithFormForCurrentSemester && (isNewProjectInForm || isPendingOrRejectedInForm || isApprovedProjectInForm) && (
-                 <Button type="submit" disabled={isSubmitting} className="w-full md:w-auto">
+                 <Button type="submit" disabled={isSubmitting || formIsReadOnly} className="w-full md:w-auto">
                     <UploadCloud className="mr-2 h-4 w-4" /> {getSubmitButtonText()}
                 </Button>
               )}
@@ -405,7 +415,7 @@ export default function ProjectsPage() {
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Submitted Projects for Semester {selectedSemesterView || (studentCurrentSemester || 'N/A')}</CardTitle>
+          <CardTitle>Submitted Projects for Semester {selectedSemesterView === 'loading-placeholder' ? 'N/A' : selectedSemesterView}</CardTitle>
           <CardDescription>List of your mini-project submissions and their status for the selected semester.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -419,7 +429,6 @@ export default function ProjectsPage() {
             <div className="space-y-4">
               {projects.map(proj => {
                 const isCurrentSemProject = studentCurrentSemester !== null && proj.submissionSemester === studentCurrentSemester;
-                // Edit button is shown if project is in current semester AND ( (it's pending/rejected) OR (it's approved - for file uploads) )
                 const canEditThisProject = isCurrentSemProject && (proj.status === 'Pending' || proj.status === 'Rejected' || proj.status === 'Approved');
                 const canDeleteThisProject = isCurrentSemProject && (proj.status === 'Pending' || proj.status === 'Rejected');
 
@@ -434,10 +443,22 @@ export default function ProjectsPage() {
                     <p><strong>Description:</strong> {proj.description}</p>
                     <p><strong>Submitted:</strong> {format(new Date(proj.submittedDate), "PPP")}</p>
                     {proj.guideId && <p><strong>Guide:</strong> {facultyList.find(f => f.id === proj.guideId)?.name || 'N/A'}</p>}
-                    {proj.pptUrl && <p><strong>PPT:</strong> {proj.pptUrl}</p>}
-                    {proj.reportUrl && <p><strong>Report:</strong> {proj.reportUrl}</p>}
+                    {proj.pptUrl && (
+                        <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline">
+                            <a href={proj.pptUrl} target="_blank" rel="noopener noreferrer">
+                                <Download className="mr-1 h-3 w-3"/> View PPT
+                            </a>
+                        </Button>
+                    )}
+                    {proj.reportUrl && (
+                         <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline ml-2">
+                            <a href={proj.reportUrl} target="_blank" rel="noopener noreferrer">
+                                <Download className="mr-1 h-3 w-3"/> View Report
+                            </a>
+                        </Button>
+                    )}
                     {proj.status === 'Approved' && (!proj.pptUrl || !proj.reportUrl) && isCurrentSemProject &&
-                      <p className="text-warning-foreground font-medium">Action Required: Please upload project files.</p>
+                      <p className="text-warning-foreground font-medium mt-1">Action Required: Please upload project files.</p>
                     }
                     {proj.remarks && (proj.status === 'Rejected' || proj.status === 'Approved') && <p className={proj.status === 'Rejected' ? "text-destructive" : "text-muted-foreground"}><strong>Faculty Remarks:</strong> {proj.remarks}</p>}
                   </CardContent>
@@ -448,15 +469,20 @@ export default function ProjectsPage() {
                          {proj.status === 'Approved' ? 'Upload/Update Files' : 'Edit Details'}
                       </Button>
                     )}
+                    {proj.submissionSemester !== studentCurrentSemester && (
+                         <Button variant="outline" size="sm" onClick={() => handleEdit(proj)} disabled={isLoading || isSubmitting}>
+                            <CalendarDays className="mr-1 h-3 w-3" /> View Details
+                        </Button>
+                    )}
                     {canDeleteThisProject && (
                       <Button variant="destructive" size="sm" onClick={() => handleDelete(proj)} disabled={isLoading || isSubmitting}>
                         <Trash2 className="mr-1 h-3 w-3" /> Delete
                       </Button>
                     )}
-                    {!isCurrentSemProject && (
+                    {!isCurrentSemProject && !canEditThisProject && proj.status !== 'Approved' && (
                         <p className="text-xs text-muted-foreground">Viewing past semester submission (read-only).</p>
                     )}
-                     {isCurrentSemProject && !canEditThisProject && proj.status !== 'Approved' && ( // e.g. some unexpected state
+                     {isCurrentSemProject && !canEditThisProject && proj.status !== 'Approved' && ( 
                         <p className="text-xs text-muted-foreground">Actions locked for this project.</p>
                      )}
                   </CardFooter>
@@ -466,7 +492,7 @@ export default function ProjectsPage() {
             </div>
           ) : (
             <p className="text-muted-foreground text-center py-4 flex items-center justify-center gap-2">
-                <CalendarDays className="h-5 w-5" /> No projects submitted for Semester {selectedSemesterView || 'N/A'}.
+                <CalendarDays className="h-5 w-5" /> No projects submitted for Semester {selectedSemesterView === 'loading-placeholder' ? 'N/A' : selectedSemesterView}.
                  {studentCurrentSemester !== null && parseInt(selectedSemesterView) === studentCurrentSemester &&
                     <Button size="sm" variant="outline" onClick={toggleFormVisibility} disabled={isLoading || isSubmitting}>Add New Project</Button>
                 }
@@ -477,5 +503,3 @@ export default function ProjectsPage() {
     </div>
   );
 }
-
-    

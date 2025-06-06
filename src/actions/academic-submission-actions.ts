@@ -7,7 +7,8 @@ import type { MiniProject, MoocCourse, SubmissionStatus, User, StudentProfile, M
 import { ObjectId } from 'mongodb';
 import type { Collection, Filter } from 'mongodb';
 import { fetchMoocCoordinatorForSemesterAction } from './faculty-actions';
-import { fetchStudentFullProfileDataAction } from './profile-actions'; // Import for fetching student profile
+import { fetchStudentFullProfileDataAction } from './profile-actions';
+import { uploadStreamToCloudinary } from '@/lib/cloudinary'; // Import Cloudinary uploader
 
 // Helper to get collections
 async function getMoocsCollection(): Promise<Collection<MoocCourse>> {
@@ -51,17 +52,49 @@ export async function fetchStudentMoocsAction(studentId: string, semester?: numb
   }
 }
 
-export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 'submittedDate' | 'status' | '_id' | 'submissionSemester'> & { id?: string }, studentId: string): Promise<MoocCourse> {
+export async function saveStudentMoocAction(formData: FormData, studentId: string): Promise<MoocCourse> {
   try {
     const moocsCollection = await getMoocsCollection();
     let savedMooc: MoocCourse;
 
-    if (moocData.id && moocData.id !== 'new') { // Update existing
-      const { id, ...dataToUpdateFromClient } = moocData;
-      const dataToUpdate = { ...dataToUpdateFromClient };
-      delete (dataToUpdate as any)._id; 
-      delete (dataToUpdate as any).id; 
-      // submissionSemester should not be updated after initial creation
+    const id = formData.get('id') as string | undefined;
+    const courseName = formData.get('courseName') as string;
+    const platform = formData.get('platform') as string;
+    const startDate = formData.get('startDate') as string;
+    const endDate = formData.get('endDate') as string;
+    const creditsEarnedStr = formData.get('creditsEarned') as string | null;
+    const creditsEarned = creditsEarnedStr ? parseFloat(creditsEarnedStr) : undefined;
+    let existingCertificateUrl = formData.get('existingCertificateUrl') as string | undefined;
+    if (existingCertificateUrl === 'undefined' || existingCertificateUrl === 'null') {
+        existingCertificateUrl = undefined;
+    }
+
+    const certificateFile = formData.get('certificateFile') as File | null;
+    let certificateCloudUrl: string | undefined = existingCertificateUrl;
+
+    if (certificateFile && certificateFile.size > 0) {
+      const fileBuffer = Buffer.from(await certificateFile.arrayBuffer());
+      const originalFileName = certificateFile.name;
+      // Sanitize filename for Cloudinary public_id: replace spaces and special chars
+      const safeFileName = originalFileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      certificateCloudUrl = await uploadStreamToCloudinary(fileBuffer, `mooc_certificates/${studentId}`, safeFileName);
+    }
+
+    const moocData: Omit<MoocCourse, 'id' | '_id' | 'submittedDate' | 'status' | 'submissionSemester'> & { studentId: string; certificateUrl?: string } = {
+      studentId,
+      courseName,
+      platform,
+      startDate,
+      endDate,
+      creditsEarned,
+      certificateUrl: certificateCloudUrl,
+    };
+
+    if (id && id !== 'new') { // Update existing
+      const dataToUpdate = { ...moocData };
+       // submissionSemester should not be updated after initial creation
+      delete (dataToUpdate as any).studentId; // studentId should not be changed on update
+      delete (dataToUpdate as any).submissionSemester; 
 
       const result = await moocsCollection.findOneAndUpdate(
         { _id: new ObjectId(id), studentId },
@@ -81,10 +114,10 @@ export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 's
 
       const newMoocInternal: Omit<MoocCourse, 'id' | '_id'> = {
         ...moocData,
-        studentId,
+        studentId, // already in moocData
         submittedDate: new Date().toISOString(),
         status: 'Pending',
-        submissionSemester: studentProfile.currentSemester, // Set submission semester
+        submissionSemester: studentProfile.currentSemester,
       };
       const result = await moocsCollection.insertOne(newMoocInternal as MoocCourse);
       const insertedIdStr = result.insertedId.toHexString();
@@ -104,6 +137,7 @@ export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 's
 export async function deleteStudentMoocAction(moocId: string, studentId: string): Promise<boolean> {
   try {
     const moocsCollection = await getMoocsCollection();
+    // Potentially: Fetch MOOC, get certificateUrl, delete from Cloudinary if exists
     const result = await moocsCollection.deleteOne({ _id: new ObjectId(moocId), studentId });
     return result.deletedCount === 1;
   } catch (error) {
@@ -133,17 +167,56 @@ export async function fetchStudentProjectsAction(studentId: string, semester?: n
   }
 }
 
-export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'id' | 'submittedDate' | 'status' | '_id' | 'guideId'| 'submissionSemester'> & { id?: string; guideId?: string; }, studentId: string): Promise<MiniProject> {
+export async function saveStudentProjectAction(formData: FormData, studentId: string): Promise<MiniProject> {
   try {
     const projectsCollection = await getProjectsCollection();
     let savedProject: MiniProject;
 
-    if (projectData.id && projectData.id !== 'new') { // Update existing
-      const { id, ...dataToUpdateFromClient } = projectData;
-      const dataToUpdate = { ...dataToUpdateFromClient };
-      delete (dataToUpdate as any)._id;
-      delete (dataToUpdate as any).id; 
-      // submissionSemester should not be updated
+    const id = formData.get('id') as string | undefined;
+    const title = formData.get('title') as string;
+    const description = formData.get('description') as string;
+    const subject = formData.get('subject') as string;
+    const guideId = formData.get('guideId') as string | undefined;
+    let existingPptUrl = formData.get('existingPptUrl') as string | undefined;
+    let existingReportUrl = formData.get('existingReportUrl') as string | undefined;
+    if (existingPptUrl === 'undefined' || existingPptUrl === 'null') existingPptUrl = undefined;
+    if (existingReportUrl === 'undefined' || existingReportUrl === 'null') existingReportUrl = undefined;
+
+
+    const pptFile = formData.get('pptFile') as File | null;
+    const reportFile = formData.get('reportFile') as File | null;
+
+    let pptCloudUrl: string | undefined = existingPptUrl;
+    let reportCloudUrl: string | undefined = existingReportUrl;
+
+    const uploadFile = async (file: File, type: 'ppt' | 'report'): Promise<string | undefined> => {
+      if (file && file.size > 0) {
+        const fileBuffer = Buffer.from(await file.arrayBuffer());
+        const originalFileName = file.name;
+        const safeFileName = originalFileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+        return uploadStreamToCloudinary(fileBuffer, `project_files/${studentId}/${type}`, safeFileName);
+      }
+      return undefined;
+    };
+
+    if (pptFile) pptCloudUrl = await uploadFile(pptFile, 'ppt') || existingPptUrl;
+    if (reportFile) reportCloudUrl = await uploadFile(reportFile, 'report') || existingReportUrl;
+
+    const projectData: Omit<MiniProject, 'id' | '_id' | 'submittedDate' | 'status' | 'submissionSemester'> & { studentId: string } = {
+      studentId,
+      title,
+      description,
+      subject,
+      guideId: guideId === 'undefined' || guideId === '' ? undefined : guideId, // Handle empty string from FormData
+      pptUrl: pptCloudUrl,
+      reportUrl: reportCloudUrl,
+    };
+
+
+    if (id && id !== 'new') { // Update existing
+      const dataToUpdate = { ...projectData };
+      delete (dataToUpdate as any).studentId; // studentId should not be changed on update
+      delete (dataToUpdate as any).submissionSemester; // submissionSemester should not be updated
 
       const result = await projectsCollection.findOneAndUpdate(
         { _id: new ObjectId(id), studentId },
@@ -163,10 +236,10 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
       }
       const newProjectInternal: Omit<MiniProject, 'id' | '_id'> = {
         ...projectData,
-        studentId,
+        studentId, // already in projectData
         submittedDate: new Date().toISOString(),
         status: 'Pending', 
-        submissionSemester: studentProfile.currentSemester, // Set submission semester
+        submissionSemester: studentProfile.currentSemester,
         guideId: projectData.guideId,
       };
       const result = await projectsCollection.insertOne(newProjectInternal as MiniProject);
@@ -187,6 +260,7 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
 export async function deleteStudentProjectAction(projectId: string, studentId: string): Promise<boolean> {
   try {
     const projectsCollection = await getProjectsCollection();
+    // Potentially: Fetch Project, get pptUrl/reportUrl, delete from Cloudinary if exists
     const result = await projectsCollection.deleteOne({ _id: new ObjectId(projectId), studentId });
     return result.deletedCount === 1;
   } catch (error) {
@@ -260,8 +334,6 @@ export async function updateSubmissionStatusAction(
       const mooc = await collection.findOne({ _id: new ObjectId(submissionId) }) as MoocCourse | null;
       if (!mooc) throw new Error("MOOC submission not found.");
 
-      // For MOOCs, the studentSemester is the student's current semester *at the time of processing by faculty*
-      // This is determined by fetching the student's profile again here or relying on data passed in (safer to re-fetch)
       const studentProfile = await fetchStudentFullProfileDataAction(mooc.studentId);
       if (!studentProfile || !studentProfile.currentSemester) {
         throw new Error("Action failed: Could not determine student's current semester for MOOC approval.");
@@ -289,4 +361,3 @@ export async function updateSubmissionStatusAction(
     throw new Error(`Failed to update ${type} status.`);
   }
 }
-
