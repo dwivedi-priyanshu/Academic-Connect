@@ -7,18 +7,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
-import type { MiniProject, SubmissionStatus } from '@/types';
-import { FileText, UploadCloud, PlusCircle, Edit2, Trash2, CheckCircle, XCircle, Clock } from 'lucide-react';
+import type { MiniProject, SubmissionStatus, User } from '@/types';
+import { FileText, UploadCloud, PlusCircle, Edit2, Trash2, CheckCircle, XCircle, Clock, UserCheck } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { FileUploadInput } from '@/components/core/FileUploadInput';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { fetchStudentProjectsAction, saveStudentProjectAction, deleteStudentProjectAction } from '@/actions/academic-submission-actions';
+import { fetchAllActiveFacultyAction } from '@/actions/faculty-actions'; // To fetch faculty for guide selection
 
 const initialProjectState: Omit<MiniProject, '_id' | 'submittedDate' | 'status'> & {id?: string} = {
-  studentId: '', title: '', description: '', pptUrl: undefined, reportUrl: undefined, subject: ''
+  studentId: '', title: '', description: '', pptUrl: undefined, reportUrl: undefined, subject: '', guideId: undefined
 };
 
 export default function ProjectsPage() {
@@ -31,6 +32,7 @@ export default function ProjectsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pptFile, setPptFile] = useState<File | null>(null);
   const [reportFile, setReportFile] = useState<File | null>(null);
+  const [facultyList, setFacultyList] = useState<User[]>([]);
 
   const availableSubjects = ["Artificial Intelligence", "Web Technologies", "Data Science", "Machine Learning", "Cyber Security", "Robotics"];
 
@@ -46,6 +48,12 @@ export default function ProjectsPage() {
         toast({ title: "Error", description: "Could not load your project submissions.", variant: "destructive" });
         setIsLoading(false);
       });
+
+      fetchAllActiveFacultyAction().then(setFacultyList).catch(err => {
+        console.error("Error fetching faculty list:", err);
+        toast({ title: "Error", description: "Could not load faculty list for guide selection.", variant: "destructive" });
+      });
+
     } else {
       setIsLoading(false);
     }
@@ -56,8 +64,8 @@ export default function ProjectsPage() {
     setCurrentProject(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectChange = (value: string) => {
-    setCurrentProject(prev => ({ ...prev, subject: value }));
+  const handleSelectChange = (name: 'subject' | 'guideId', value: string) => {
+    setCurrentProject(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -71,9 +79,6 @@ export default function ProjectsPage() {
       reportUrl: reportFile ? reportFile.name : currentProject.reportUrl,
     };
     
-    // If new or pending, files should not be set. This logic is handled by form display.
-    // Server action will handle setting status and submittedDate for new projects.
-
     try {
       const savedProject = await saveStudentProjectAction(projectToSave, user.id);
       
@@ -109,7 +114,7 @@ export default function ProjectsPage() {
     if (!user) return;
     if (!confirm("Are you sure you want to delete this project? This action cannot be undone.")) return;
 
-    setIsLoading(true); // General loading for delete
+    setIsLoading(true); 
     try {
       await deleteStudentProjectAction(projectId, user.id);
       setProjects(prev => prev.filter(p => p.id !== projectId));
@@ -163,7 +168,7 @@ export default function ProjectsPage() {
   }
 
   const getFormDescription = () => {
-     if (currentProject.id === 'new' || !currentProject.id) return 'Submit your project title, subject, and description for approval. File uploads will be enabled after approval.';
+     if (currentProject.id === 'new' || !currentProject.id) return 'Submit your project title, subject, description, and select a guide for approval. File uploads will be enabled after approval.';
      if (currentProject.status === 'Approved') return 'Your project proposal has been approved. Please upload your PPT and Report files.';
      return 'Edit the details of your pending or rejected project submission.';
   }
@@ -180,7 +185,8 @@ export default function ProjectsPage() {
   }
 
   const projectIsApproved = currentProject.status === 'Approved';
-  const isNewProject = currentProject.id === 'new' || !currentProject.id;
+  const isNewOrPendingProject = (currentProject.id === 'new' || !currentProject.id) || currentProject.status === 'Pending';
+  const canEditDetails = !projectIsApproved || currentProject.status === 'Rejected';
 
 
   return (
@@ -210,7 +216,7 @@ export default function ProjectsPage() {
                     onChange={handleInputChange}
                     required
                     className="bg-background"
-                    disabled={projectIsApproved || isSubmitting}
+                    disabled={!canEditDetails || isSubmitting}
                   />
                 </div>
                  <div className="space-y-1">
@@ -218,9 +224,9 @@ export default function ProjectsPage() {
                   <Select
                     name="subject"
                     value={currentProject.subject}
-                    onValueChange={handleSelectChange}
+                    onValueChange={(value) => handleSelectChange('subject', value)}
                     required
-                    disabled={projectIsApproved || isSubmitting}
+                    disabled={!canEditDetails || isSubmitting}
                   >
                     <SelectTrigger className="bg-background">
                       <SelectValue placeholder="Select subject" />
@@ -240,11 +246,43 @@ export default function ProjectsPage() {
                   onChange={handleInputChange}
                   required
                   className="bg-background"
-                  disabled={projectIsApproved || isSubmitting}
+                  disabled={!canEditDetails || isSubmitting}
                 />
               </div>
 
-              {projectIsApproved && !isNewProject && (
+              {isNewOrPendingProject && !currentProject.guideId && (
+                <div className="space-y-1">
+                  <Label htmlFor="guideId">Select Guide</Label>
+                  <Select
+                    name="guideId"
+                    value={currentProject.guideId || ''}
+                    onValueChange={(value) => handleSelectChange('guideId', value)}
+                    disabled={isSubmitting || !!currentProject.guideId} 
+                  >
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="Select a faculty guide" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectLabel>Faculty Members</SelectLabel>
+                        {facultyList.length > 0 ? facultyList.map(faculty => (
+                          <SelectItem key={faculty.id} value={faculty.id}>
+                            {faculty.name}
+                          </SelectItem>
+                        )) : <SelectItem value="-" disabled>No faculty available</SelectItem>}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {currentProject.guideId && (
+                <div className="text-sm text-muted-foreground">
+                    Guide: {facultyList.find(f => f.id === currentProject.guideId)?.name || 'N/A'}
+                </div>
+              )}
+
+
+              {projectIsApproved && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4 mt-4 border-dashed">
                   <FileUploadInput
                     id="pptFile"
@@ -295,6 +333,7 @@ export default function ProjectsPage() {
                     <p><strong>Subject:</strong> {proj.subject}</p>
                     <p><strong>Description:</strong> {proj.description}</p>
                     <p><strong>Submitted:</strong> {format(new Date(proj.submittedDate), "PPP")}</p>
+                    {proj.guideId && <p><strong>Guide:</strong> {facultyList.find(f => f.id === proj.guideId)?.name || 'N/A'}</p>}
                     {proj.pptUrl && <p><strong>PPT:</strong> {proj.pptUrl}</p>}
                     {proj.reportUrl && <p><strong>Report:</strong> {proj.reportUrl}</p>}
                     {proj.status === 'Approved' && (!proj.pptUrl || !proj.reportUrl) &&
@@ -303,10 +342,10 @@ export default function ProjectsPage() {
                     {proj.remarks && proj.status === 'Rejected' && <p className="text-destructive"><strong>Remarks:</strong> {proj.remarks}</p>}
                   </CardContent>
                   <CardFooter className="flex justify-end gap-2 pt-0 pb-3 px-6">
-                    {(proj.status === 'Pending' || proj.status === 'Rejected' || proj.status === 'Approved') && (
+                    {(proj.status === 'Pending' || proj.status === 'Rejected' || (proj.status === 'Approved' && (!proj.pptUrl || !proj.reportUrl))) && (
                       <Button variant="outline" size="sm" onClick={() => handleEdit(proj)} disabled={isLoading || isSubmitting}>
                         <Edit2 className="mr-1 h-3 w-3" />
-                        {proj.status === 'Approved' ? 'Upload Files' : 'Edit Details'}
+                         {proj.status === 'Approved' ? 'Upload Files' : (proj.status === 'Pending' && proj.guideId ? 'Edit (Guide Locked)' : 'Edit Details')}
                       </Button>
                     )}
                     {proj.status === 'Pending' && (
@@ -326,4 +365,3 @@ export default function ProjectsPage() {
     </div>
   );
 }
-

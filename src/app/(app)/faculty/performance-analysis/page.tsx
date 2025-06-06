@@ -6,33 +6,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
-import type { SubjectMark } from '@/types';
+import type { SubjectMark, FacultySubjectAssignment } from '@/types';
 import { BarChart as BarChartIcon, Info, Users, Percent, TrendingUp, TrendingDown, CheckSquare } from 'lucide-react'; 
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { fetchMarksFromStorage } from '@/actions/marks-actions'; 
+import { fetchFacultyAssignmentsForClassAction } from '@/actions/faculty-actions'; // For assigned subjects
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from '@/components/ui/skeleton';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 
 
-// Standardized Subject List (matches marks-entry page)
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
-const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
+// This subject list is a fallback. Actual list filtered by assignments.
+const ALL_SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
   "1": [{ code: "MA101", name: "Applied Mathematics I" }, { code: "PH102", name: "Engineering Physics" }],
   "2": [{ code: "MA201", name: "Applied Mathematics II" }, { code: "CH202", name: "Engineering Chemistry" }],
   "3": [{ code: "CS301", name: "Data Structures" }, { code: "CS302", name: "Discrete Mathematics" }, { code: "EC303", name: "Analog Electronics" }, { code: "CS304", name: "Digital Design & Comp Org"}],
   "4": [
-    { code: "BCS401", name: "Analysis and Design of Algorithms" },
-    { code: "BCS402", name: "Microcontrollers" },
-    { code: "BCS403", name: "Database Management System" },
-    { code: "BCS405A", name: "Discrete Mathematical Structures" },
-    { code: "BCS405B", name: "Graph Theory" },
-    { code: "BIS402", name: "Advanced Java" },
-    { code: "BBOC407", name: "Biology for Engineers" },
-    { code: "BUHK408", name: "Universal Human Values" }
+    { code: "BCS401", name: "Analysis and Design of Algorithms" }, { code: "BCS402", name: "Microcontrollers" },
+    { code: "BCS403", name: "Database Management System" }, { code: "BCS405A", name: "Discrete Mathematical Structures" },
+    { code: "BCS405B", name: "Graph Theory" }, { code: "BIS402", name: "Advanced Java" },
+    { code: "BBOC407", name: "Biology for Engineers" }, { code: "BUHK408", name: "Universal Human Values" }
   ],
   "5": [{ code: "CS501", name: "Database Management" }, { code: "CS502", name: "Computer Networks" }],
   "6": [{ code: "CS601", name: "Compiler Design" }, { code: "CS602", name: "Software Engineering" }],
@@ -41,7 +38,6 @@ const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
 };
 
 
-// Function to calculate detailed summary statistics
 const calculateDetailedSummary = (marks: SubjectMark[]) => {
     if (!marks || marks.length === 0) {
         return { count: 0, averages: {}, passPercentages: {}, highPerformers: 0, lowPerformers: 0, distribution: {} };
@@ -69,7 +65,6 @@ const calculateDetailedSummary = (marks: SubjectMark[]) => {
     fields.forEach(field => {
         const marksList = validMarks.map(m => m[field]).filter(mark => typeof mark === 'number') as number[];
         
-        // Calculate distribution for each assessment type
         distribution[field] = {};
         const max = maxMarks[field];
         const ranges = [[0, 0.2*max], [0.2*max + 0.01, 0.4*max], [0.4*max + 0.01, 0.6*max], [0.6*max + 0.01, 0.8*max], [0.8*max + 0.01, max]];
@@ -116,18 +111,10 @@ const calculateDetailedSummary = (marks: SubjectMark[]) => {
 };
 
 const chartConfig = {
-  averageScore: {
-    label: "Average Score",
-    color: "hsl(var(--chart-1))",
-  },
-  maxMarks: {
-    label: "Max Marks",
-    color: "hsl(var(--chart-2))",
-  },
-  passPercentage: {
-    label: "Pass %",
-    color: "hsl(var(--chart-3))",
-  },
+  averageScore: { label: "Average Score", color: "hsl(var(--chart-1))" },
+  maxMarks: { label: "Max Marks", color: "hsl(var(--chart-2))" },
+  passPercentage: { label: "Pass %", color: "hsl(var(--chart-3))" },
+  count: { label: "Students", color: "hsl(var(--chart-4))" },
 } satisfies ChartConfig;
 
 
@@ -137,20 +124,43 @@ export default function PerformanceAnalysisPage() {
   const [selectedSemester, setSelectedSemester] = useState<string>("");
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [selectedSubject, setSelectedSubject] = useState<{ code: string, name: string } | null>(null);
-  const [subjectsForSemester, setSubjectsForSemester] = useState<{ code: string, name: string }[]>([]);
+  
+  const [assignedSubjectsForClass, setAssignedSubjectsForClass] = useState<{ code: string, name: string }[]>([]);
+  const [isLoadingAssignedSubjects, setIsLoadingAssignedSubjects] = useState(false);
+
   const [analysisSummary, setAnalysisSummary] = useState<ReturnType<typeof calculateDetailedSummary> | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
   useEffect(() => {
-    setSubjectsForSemester(SUBJECTS_BY_SEMESTER[selectedSemester] || []);
     setSelectedSubject(null);
     setAnalysisSummary(null); 
-  }, [selectedSemester]);
+    setAssignedSubjectsForClass([]);
+    setInitialLoadComplete(false);
+
+    if (user && selectedSemester && selectedSection) {
+      setIsLoadingAssignedSubjects(true);
+      fetchFacultyAssignmentsForClassAction(user.id, parseInt(selectedSemester), selectedSection)
+        .then(assignments => {
+          const subjects = assignments.map(a => ({ code: a.subjectCode, name: a.subjectName }));
+          setAssignedSubjectsForClass(subjects);
+           if (subjects.length === 0) {
+            toast({ title: "No Assigned Subjects", description: "You are not assigned to any subjects for the selected class.", variant: "default" });
+          }
+        })
+        .catch(err => {
+          console.error("Error fetching assigned subjects:", err);
+          toast({ title: "Error", description: "Could not load assigned subjects.", variant: "destructive" });
+        })
+        .finally(() => setIsLoadingAssignedSubjects(false));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, selectedSemester, selectedSection, toast]);
 
    useEffect(() => {
      setAnalysisSummary(null);
-   }, [selectedSection, selectedSubject]);
+     setInitialLoadComplete(false);
+   }, [selectedSubject]);
 
 
   useEffect(() => {
@@ -185,8 +195,11 @@ export default function PerformanceAnalysisPage() {
            setAnalysisSummary(null);
       }
     };
-    loadPerformanceData();
-  }, [selectedSemester, selectedSection, selectedSubject, user, toast]);
+    if (selectedSubject) { // Only load data if a subject is selected
+        loadPerformanceData();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSubject, user, toast]); // Removed selectedSemester, selectedSection as they trigger subject list reload
 
   const averageScoresChartData = useMemo(() => {
     if (!analysisSummary?.averages) return [];
@@ -249,7 +262,7 @@ export default function PerformanceAnalysisPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Select Class and Subject</CardTitle>
-          <CardDescription>Choose the semester, section, and subject to analyze performance.</CardDescription>
+          <CardDescription>Choose the semester, section, and one of your assigned subjects to analyze performance.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
@@ -274,15 +287,19 @@ export default function PerformanceAnalysisPage() {
             <Label htmlFor="subject">Subject</Label>
             <Select
               value={selectedSubject?.code || ""}
-              onValueChange={(code) => setSelectedSubject(subjectsForSemester.find(s => s.code === code) || null)}
-              disabled={!selectedSection || subjectsForSemester.length === 0}
+              onValueChange={(code) => setSelectedSubject(assignedSubjectsForClass.find(s => s.code === code) || null)}
+              disabled={!selectedSection || isLoadingAssignedSubjects || assignedSubjectsForClass.length === 0}
             >
-              <SelectTrigger id="subject"><SelectValue placeholder="Select Subject" /></SelectTrigger>
+              <SelectTrigger id="subject">
+                 <SelectValue placeholder={isLoadingAssignedSubjects ? "Loading subjects..." : (assignedSubjectsForClass.length === 0 && selectedSection ? "No assigned subjects" : "Select Subject")} />
+              </SelectTrigger>
               <SelectContent>
-                {subjectsForSemester.length > 0 ? (
-                    subjectsForSemester.map(sub => <SelectItem key={sub.code} value={sub.code}>{sub.name} ({sub.code})</SelectItem>)
+                {assignedSubjectsForClass.length > 0 ? (
+                    assignedSubjectsForClass.map(sub => <SelectItem key={sub.code} value={sub.code}>{sub.name} ({sub.code})</SelectItem>)
                 ) : (
-                    <SelectItem value="-" disabled>No subjects found</SelectItem>
+                     <SelectItem value="-" disabled>
+                      {isLoadingAssignedSubjects ? "Loading..." : (selectedSemester && selectedSection ? "No subjects assigned for this class" : "Select semester & section first")}
+                    </SelectItem>
                 )}
               </SelectContent>
             </Select>
@@ -297,7 +314,7 @@ export default function PerformanceAnalysisPage() {
             <CardDescription>Overview of student performance based on entered marks.</CardDescription>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {isLoading && !analysisSummary ? (
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-md" />)}
                  </div>
@@ -379,7 +396,15 @@ export default function PerformanceAnalysisPage() {
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis dataKey="name" tickLine={false} axisLine={false} />
                             <YAxis tickLine={false} axisLine={false} domain={[0, 50]}/>
-                            <Tooltip content={<ChartTooltipContent />} />
+                            <Tooltip content={<ChartTooltipContent formatter={(value, name, props) => {
+                                return (
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{props.payload.name}</span>
+                                    <span className="text-muted-foreground">Avg: {value} / {props.payload['Max Marks']}</span>
+                                  </div>
+                                )
+                              }} />} 
+                            />
                             <Legend />
                             <Bar dataKey="Average Score" fill="var(--color-averageScore)" radius={4} />
                           </BarChart>
@@ -420,9 +445,7 @@ export default function PerformanceAnalysisPage() {
                                 {distributionChartData.map(assessment => (
                                     <div key={assessment.assessment}>
                                         <h3 className="font-semibold text-center mb-2">{assessment.assessment}</h3>
-                                        <ChartContainer config={{
-                                            count: { label: "Students", color: "hsl(var(--chart-1))" }
-                                        }} className="h-[250px] w-full">
+                                        <ChartContainer config={chartConfig} className="h-[250px] w-full">
                                             <BarChart data={assessment.data} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
                                                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                                                 <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} />
@@ -442,7 +465,7 @@ export default function PerformanceAnalysisPage() {
               </>
             ) : (
                initialLoadComplete && ( 
-                  <p className="text-center py-8 text-muted-foreground">No performance data available for this selection. Ensure marks have been entered.</p>
+                  <p className="text-center py-8 text-muted-foreground">No performance data available for this selection. Ensure marks have been entered for students in this class and subject.</p>
                )
             )}
           </CardContent>
@@ -453,10 +476,9 @@ export default function PerformanceAnalysisPage() {
          <Alert className="mt-6 bg-accent/20 border-accent text-accent-foreground">
              <Info className="h-5 w-5 text-accent" />
             <AlertTitle>Select Class for Analysis</AlertTitle>
-            <AlertDescription>Please select a semester, section, and subject above to view the performance analysis.</AlertDescription>
+            <AlertDescription>Please select a semester, section, and one of your assigned subjects above to view the performance analysis.</AlertDescription>
         </Alert>
        )}
     </div>
   );
 }
-

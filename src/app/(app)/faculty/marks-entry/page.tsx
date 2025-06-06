@@ -8,30 +8,28 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
-import type { SubjectMark, StudentProfile } from '@/types';
+import type { SubjectMark, StudentProfile, FacultySubjectAssignment } from '@/types';
 import { Edit3, Save, BarChart, Info, Users, PlusCircle, Trash2 } from 'lucide-react';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { fetchStudentProfilesForMarksEntry, saveMultipleStudentMarksAction } from '@/actions/marks-actions';
+import { fetchFacultyAssignmentsForClassAction } from '@/actions/faculty-actions'; // New action
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from '@/components/ui/skeleton';
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
-// This subject list should ideally be fetched from a database or a more centralized configuration
-const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
+// This subject list is now a fallback or general list.
+// The actual subjects available for selection will be filtered by faculty assignments.
+const ALL_SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
   "1": [{ code: "MA101", name: "Applied Mathematics I" }, { code: "PH102", name: "Engineering Physics" }],
   "2": [{ code: "MA201", name: "Applied Mathematics II" }, { code: "CH202", name: "Engineering Chemistry" }],
   "3": [{ code: "CS301", name: "Data Structures" }, { code: "CS302", name: "Discrete Mathematics" }, { code: "EC303", name: "Analog Electronics" }, { code: "CS304", name: "Digital Design & Comp Org"}],
   "4": [
-    { code: "BCS401", name: "Analysis and Design of Algorithms" },
-    { code: "BCS402", name: "Microcontrollers" },
-    { code: "BCS403", name: "Database Management System" },
-    { code: "BCS405A", name: "Discrete Mathematical Structures" },
-    { code: "BCS405B", name: "Graph Theory" },
-    { code: "BIS402", name: "Advanced Java" },
-    { code: "BBOC407", name: "Biology for Engineers" },
-    { code: "BUHK408", name: "Universal Human Values" }
+    { code: "BCS401", name: "Analysis and Design of Algorithms" }, { code: "BCS402", name: "Microcontrollers" },
+    { code: "BCS403", name: "Database Management System" }, { code: "BCS405A", name: "Discrete Mathematical Structures" },
+    { code: "BCS405B", name: "Graph Theory" }, { code: "BIS402", name: "Advanced Java" },
+    { code: "BBOC407", name: "Biology for Engineers" }, { code: "BUHK408", name: "Universal Human Values" }
   ],
   "5": [{ code: "CS501", name: "Database Management" }, { code: "CS502", name: "Computer Networks" }],
   "6": [{ code: "CS601", name: "Compiler Design" }, { code: "CS602", name: "Software Engineering" }],
@@ -39,7 +37,6 @@ const SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
   "8": [{ code: "CS801", name: "Project Work" }, { code: "CS802", name: "Professional Elective" }],
 };
 
-// Interface for the data structure used in the form for each student
 interface StudentMarksEntryData {
   profile: StudentProfile;
   marks: SubjectMark;
@@ -51,7 +48,9 @@ export default function MarksEntryPage() {
   const [selectedSemester, setSelectedSemester] = useState<string>("");
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [selectedSubject, setSelectedSubject] = useState<{ code: string, name: string } | null>(null);
-  const [subjectsForSemester, setSubjectsForSemester] = useState<{ code: string, name: string }[]>([]);
+  
+  const [assignedSubjectsForClass, setAssignedSubjectsForClass] = useState<{ code: string, name: string }[]>([]);
+  const [isLoadingAssignedSubjects, setIsLoadingAssignedSubjects] = useState(false);
   
   const [studentsMarksEntries, setStudentsMarksEntries] = useState<StudentMarksEntryData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,16 +58,35 @@ export default function MarksEntryPage() {
   const [initialLoadAttempted, setInitialLoadAttempted] = useState(false);
 
   useEffect(() => {
-    setSubjectsForSemester(SUBJECTS_BY_SEMESTER[selectedSemester] || []);
+    // When semester or section changes, reset subject and student list, then fetch assigned subjects
     setSelectedSubject(null);
     setStudentsMarksEntries([]);
     setInitialLoadAttempted(false);
-  }, [selectedSemester]);
+    setAssignedSubjectsForClass([]);
+
+    if (user && selectedSemester && selectedSection) {
+      setIsLoadingAssignedSubjects(true);
+      fetchFacultyAssignmentsForClassAction(user.id, parseInt(selectedSemester), selectedSection)
+        .then(assignments => {
+          const subjects = assignments.map(a => ({ code: a.subjectCode, name: a.subjectName }));
+          setAssignedSubjectsForClass(subjects);
+          if (subjects.length === 0) {
+            toast({ title: "No Assigned Subjects", description: "You are not assigned to teach any subjects for the selected semester and section.", variant: "default" });
+          }
+        })
+        .catch(err => {
+          console.error("Error fetching assigned subjects:", err);
+          toast({ title: "Error", description: "Could not load your assigned subjects.", variant: "destructive" });
+        })
+        .finally(() => setIsLoadingAssignedSubjects(false));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, selectedSemester, selectedSection, toast]);
 
   useEffect(() => {
      setStudentsMarksEntries([]);
      setInitialLoadAttempted(false);
-  }, [selectedSection, selectedSubject])
+  }, [selectedSubject])
 
 
   const loadStudentsAndMarks = useCallback(async () => {
@@ -107,7 +125,7 @@ export default function MarksEntryPage() {
         setStudentsMarksEntries(transformedData);
 
         if (transformedData.length === 0) {
-            toast({title: "No Students Found", description: "No active students found for this class/section. Ensure student accounts are 'Active' and have assigned USNs and correct current semester.", variant: "default"});
+            toast({title: "No Students Found", description: "No active students found for this class/section with matching current semester. Ensure student profiles are up-to-date.", variant: "default"});
         }
       } catch (error) {
         console.error("Error fetching students/marks:", error);
@@ -130,7 +148,7 @@ export default function MarksEntryPage() {
         setInitialLoadAttempted(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSemester, selectedSection, selectedSubject, user]);
+  }, [selectedSemester, selectedSection, selectedSubject, user]); // Dependencies updated
 
 
   const handleMarkChange = (studentUserId: string, field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50' | 'assignment1_20' | 'assignment2_20'>, value: string) => {
@@ -156,7 +174,7 @@ export default function MarksEntryPage() {
       toast({ title: "Selection Required", description: "Please select semester, section, and subject first.", variant: "destructive"});
       return;
     }
-    const newStudentId = `temp-${Date.now()}`; // Temporary unique ID for new row
+    const newStudentId = `temp-${Date.now()}`; 
     const newEntry: StudentMarksEntryData = {
       profile: { 
         id: newStudentId, 
@@ -311,7 +329,7 @@ export default function MarksEntryPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Select Class and Subject</CardTitle>
-          <CardDescription>Choose the semester, section, and subject to enter or view marks. Students must be 'Active' and have correct 'Current Semester' & 'Section' in their profile to appear, or you can add them manually.</CardDescription>
+          <CardDescription>Choose the semester, section, and subject (from your assigned list) to enter or view marks. Students must have the correct 'Current Semester' & 'Section' in their profile to appear.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
@@ -336,15 +354,19 @@ export default function MarksEntryPage() {
             <Label htmlFor="subject">Subject</Label>
             <Select
               value={selectedSubject?.code || ""}
-              onValueChange={(code) => setSelectedSubject(subjectsForSemester.find(s => s.code === code) || null)}
-              disabled={!selectedSection || subjectsForSemester.length === 0}
+              onValueChange={(code) => setSelectedSubject(assignedSubjectsForClass.find(s => s.code === code) || null)}
+              disabled={!selectedSection || isLoadingAssignedSubjects || assignedSubjectsForClass.length === 0}
             >
-              <SelectTrigger id="subject"><SelectValue placeholder="Select Subject" /></SelectTrigger>
+              <SelectTrigger id="subject">
+                <SelectValue placeholder={isLoadingAssignedSubjects ? "Loading subjects..." : (assignedSubjectsForClass.length === 0 && selectedSection ? "No assigned subjects" : "Select Subject")} />
+              </SelectTrigger>
               <SelectContent>
-                {subjectsForSemester.length > 0 ? (
-                    subjectsForSemester.map(sub => <SelectItem key={sub.code} value={sub.code}>{sub.name} ({sub.code})</SelectItem>)
+                {assignedSubjectsForClass.length > 0 ? (
+                    assignedSubjectsForClass.map(sub => <SelectItem key={sub.code} value={sub.code}>{sub.name} ({sub.code})</SelectItem>)
                 ) : (
-                    <SelectItem value="-" disabled>No subjects for this semester</SelectItem>
+                    <SelectItem value="-" disabled>
+                      {isLoadingAssignedSubjects ? "Loading..." : (selectedSemester && selectedSection ? "No subjects assigned for this class" : "Select semester & section first")}
+                    </SelectItem>
                 )}
               </SelectContent>
             </Select>
@@ -444,8 +466,8 @@ export default function MarksEntryPage() {
                     <div className="text-center py-8 text-muted-foreground">
                         <Users className="mx-auto h-12 w-12 mb-4" />
                         <p className="text-lg">No active students loaded for this selection.</p>
-                        <p>Ensure students are active, assigned a USN, and their 'Current Semester' & 'Section' match your selection.</p>
-                        <p>You can also add students manually using the button above.</p>
+                        <p>Ensure student profiles have the correct 'Current Semester' & 'Section' matching your selection, and are 'Active'.</p>
+                        <p>You can also add students manually using the button above (USN required for saving).</p>
                     </div>
                  )
             )}
@@ -490,10 +512,9 @@ export default function MarksEntryPage() {
          <Alert className="mt-6 bg-accent/20 border-accent text-accent-foreground">
              <Info className="h-5 w-5 text-accent" />
             <AlertTitle>Select Class to Begin</AlertTitle>
-            <AlertDescription>Please select a semester, section, and subject above to view or enter marks for students.</AlertDescription>
+            <AlertDescription>Please select a semester, section, and one of your assigned subjects above to view or enter marks.</AlertDescription>
         </Alert>
        )}
     </div>
   );
 }
-

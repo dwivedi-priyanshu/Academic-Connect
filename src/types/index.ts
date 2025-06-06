@@ -1,51 +1,48 @@
 
-
 export type UserRole = 'Student' | 'Faculty' | 'Admin';
 export type UserStatus = 'PendingApproval' | 'Active' | 'Rejected' | 'Disabled';
 
 export interface User {
-  _id?: any; // MongoDB ObjectId string when fetched from DB
-  id: string;  // Primary identifier used throughout the app. For Mongo, this will be _id.toHexString().
+  _id?: any; 
+  id: string;  
   email: string;
   name: string;
   role: UserRole;
   avatar?: string; 
-  status: UserStatus; // Added status field
-  // password?: string; // In a real app, this would be a hashed password, not stored on client model
+  status: UserStatus; 
 }
 
 export interface StudentProfile {
-  _id?: any; // MongoDB ObjectId string
-  id: string; // This field will be mapped from _id for client-side use
-  userId: string; // Links to User.id
-  admissionId: string; // USN
+  _id?: any; 
+  id: string; 
+  userId: string; 
+  admissionId: string; 
   fullName: string;
   dateOfBirth: string; 
   contactNumber: string;
   address: string;
   department: string;
   year: number; 
-  currentSemester: number; // Changed to non-optional as it's critical
+  currentSemester: number; 
   section: string; 
-  parentName: string; // General guardian name
+  parentName: string; 
   parentContact: string;
-  // New fields for detailed personal information
   fatherName?: string;
   motherName?: string;
   gender?: 'Male' | 'Female' | 'Other' | '';
   bloodGroup?: string;
   aadharNumber?: string;
-  category?: string; // GM, SC, ST, OBC, etc.
+  category?: string; 
   religion?: string;
   nationality?: string;
-  sslcMarks?: string; // e.g., "90%" or "10 CGPA"
-  pucMarks?: string;  // e.g., "85%" or "9.5 CGPA"
-  avatar?: string; // Added avatar to student profile for consistency
+  sslcMarks?: string; 
+  pucMarks?: string;  
+  avatar?: string; 
 }
 
 export interface SubjectMark {
-  _id?: string; // In MongoDB, this will be the composite 'id' string.
-  id: string; // Composite key: studentId-subjectCode-semester. This WILL be used as _id in MongoDB for marks.
+  _id?: string; 
+  id: string; 
   studentId: string; 
   usn: string; 
   studentName: string; 
@@ -62,7 +59,7 @@ export interface SubjectMark {
 export type SubmissionStatus = 'Pending' | 'Approved' | 'Rejected';
 
 export interface MiniProject {
-  _id: any; // MongoDB ObjectId, will be mapped to string 'id'
+  _id: any; 
   id: string;
   studentId: string;
   title: string;
@@ -71,14 +68,14 @@ export interface MiniProject {
   reportUrl?: string; 
   submittedDate: string; 
   status: SubmissionStatus;
-  facultyId?: string; // Faculty who last actioned it (approved/rejected)
+  facultyId?: string; 
   remarks?: string;
   subject: string;
-  guideId?: string; // User ID of the faculty guide
+  guideId?: string; 
 }
 
 export interface MoocCourse {
-  _id: any; // MongoDB ObjectId, will be mapped to string 'id'
+  _id: any; 
   id:string;
   studentId: string;
   courseName: string;
@@ -89,12 +86,21 @@ export interface MoocCourse {
   creditsEarned?: number;
   submittedDate: string; 
   status: SubmissionStatus;
-  facultyId?: string; // Faculty who last actioned it
+  facultyId?: string; 
   remarks?: string;
 }
 
-// The following MOCK_USER constants are for reference or seeding the database.
-// They are NOT used for active authentication by AuthContext anymore.
+export interface FacultySubjectAssignment {
+  _id?: any;
+  id: string;
+  facultyId: string; // User ID of the faculty
+  subjectCode: string;
+  subjectName: string; // For easier display
+  semester: number;
+  section: string;
+}
+
+
 export const MOCK_USER_STUDENT_DATA: Omit<User, 'id' | '_id' | 'status'> = {
   email: 'student@example.com',
   name: 'John Doe',
