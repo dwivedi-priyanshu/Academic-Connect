@@ -349,12 +349,12 @@ const ProfilePageSkeleton = () => (
         <CardContent className="p-0">
              <Skeleton className="h-10 w-full rounded-none" /> {/* TabsList Skeleton */}
              <div className="p-6 space-y-6">
-                {[...Array(3)].map(s => (
-                    <div key={s}>
+                {[...Array(3)].map((_, sectionIndex) => (
+                    <div key={`section-skel-${sectionIndex}`}>
                         <Skeleton className="h-6 w-1/3 mb-3" /> {/* Section Title */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                        {[...Array(4)].map((_, i) => ( 
-                            <div key={i} className="space-y-1">
+                        {[...Array(4)].map((_, fieldIndex) => ( 
+                            <div key={`field-skel-${sectionIndex}-${fieldIndex}`} className="space-y-1">
                             <Skeleton className="h-4 w-24 mb-1" /> {/* Label */}
                             <Skeleton className="h-10 w-full" /> {/* Input/Text */}
                             </div>
@@ -367,3 +367,4 @@ const ProfilePageSkeleton = () => (
     </Card>
   </div>
 );
+
