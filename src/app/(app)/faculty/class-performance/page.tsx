@@ -14,10 +14,10 @@ import { useToast } from "@/hooks/use-toast";
 import { fetchAllMarksForClassAction } from '@/actions/marks-actions';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ALL_SUBJECTS_BY_SEMESTER } from '@/lib/subjects';
+import { ALL_SUBJECTS_BY_SEMESTER, DEPARTMENTS } from '@/lib/subjects'; // Import DEPARTMENTS
 import { Label } from '@/components/ui/label';
 
-const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical"];
+// const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical"]; // Moved to src/lib/subjects.ts
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
 
