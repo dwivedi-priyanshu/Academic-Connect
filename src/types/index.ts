@@ -69,11 +69,13 @@ export interface MiniProject {
   reportUrl?: string; 
   submittedDate: string; 
   status: SubmissionStatus;
-  facultyId?: string; 
+  facultyId?: string; // ID of faculty who actioned (approved/rejected)
   remarks?: string;
   subject: string;
-  guideId?: string; 
+  guideId?: string; // ID of faculty chosen by student as guide
   submissionSemester: number; 
+  studentName?: string; // Populated for display
+  guideName?: string; // Populated for display
 }
 
 export interface MoocCourse {
@@ -95,8 +97,7 @@ export interface MoocCourse {
 
 export interface MoocCourseWithStudentInfo extends MoocCourse {
   studentName: string;
-  studentSemester: number; // This refers to student's current semester at time of MOOC processing by faculty
-                           // The `submissionSemester` on MoocCourse is when student *submitted* it
+  studentSemester: number; 
 }
 
 

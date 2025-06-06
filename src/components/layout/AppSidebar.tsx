@@ -17,7 +17,8 @@ import {
   LayoutDashboard,
   GraduationCap,
   BarChart, 
-  Settings2 // Import Settings2 for assignments
+  Settings2, 
+  LibraryBig // Added for Project Repository
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -34,7 +35,7 @@ export interface NavItem {
 
 const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Student', 'Faculty', 'Admin'], exact: true },
-  { href: '/profile', label: 'Profile', icon: UserCircle, roles: ['Student', 'Faculty', 'Admin'] }, // Admin can view their own profile
+  { href: '/profile', label: 'Profile', icon: UserCircle, roles: ['Student', 'Faculty', 'Admin'] }, 
   // Student specific
   { href: '/academics/marks', label: 'My Marks', icon: ClipboardList, roles: ['Student'] },
   { href: '/academics/projects', label: 'My Projects', icon: FileText, roles: ['Student'] },
@@ -44,9 +45,10 @@ const navItems: NavItem[] = [
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
   { href: '/faculty/approvals', label: 'Approvals', icon: CheckSquare, roles: ['Faculty'] },
   { href: '/faculty/performance-analysis', label: 'Performance Analysis', icon: BarChart, roles: ['Faculty'] },
+  { href: '/faculty/approved-projects', label: 'Project Repository', icon: LibraryBig, roles: ['Faculty'] }, // New Faculty page
   // Admin specific
   { href: '/admin/users', label: 'User Management', icon: ShieldCheck, roles: ['Admin'] },
-  { href: '/admin/assignments', label: 'Assignments', icon: Settings2, roles: ['Admin'] }, // New Admin page
+  { href: '/admin/assignments', label: 'Assignments', icon: Settings2, roles: ['Admin'] }, 
 ];
 
 export function AppSidebar() {

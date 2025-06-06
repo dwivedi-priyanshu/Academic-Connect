@@ -8,7 +8,7 @@ import { ObjectId } from 'mongodb';
 import type { Collection, Filter } from 'mongodb';
 import { fetchMoocCoordinatorForSemesterAction } from './faculty-actions';
 import { fetchStudentFullProfileDataAction } from './profile-actions';
-import { uploadStreamToCloudinary } from '@/lib/cloudinary'; // Import Cloudinary uploader
+import { uploadStreamToCloudinary } from '@/lib/cloudinary'; 
 
 // Helper to get collections
 async function getMoocsCollection(): Promise<Collection<MoocCourse>> {
@@ -75,7 +75,6 @@ export async function saveStudentMoocAction(formData: FormData, studentId: strin
     if (certificateFile && certificateFile.size > 0) {
       const fileBuffer = Buffer.from(await certificateFile.arrayBuffer());
       const originalFileName = certificateFile.name;
-      // Sanitize filename for Cloudinary public_id: replace spaces and special chars
       const safeFileName = originalFileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
       const resourceTypeForCert = (certificateFile.type === 'application/pdf' || certificateFile.name.toLowerCase().endsWith('.pdf')) ? 'raw' : 'auto';
       certificateCloudUrl = await uploadStreamToCloudinary(fileBuffer, `mooc_certificates/${studentId}`, safeFileName, resourceTypeForCert);
@@ -91,10 +90,9 @@ export async function saveStudentMoocAction(formData: FormData, studentId: strin
       certificateUrl: certificateCloudUrl,
     };
 
-    if (id && id !== 'new') { // Update existing
+    if (id && id !== 'new') { 
       const dataToUpdate = { ...moocData };
-       // submissionSemester should not be updated after initial creation
-      delete (dataToUpdate as any).studentId; // studentId should not be changed on update
+      delete (dataToUpdate as any).studentId; 
       delete (dataToUpdate as any).submissionSemester; 
 
       const result = await moocsCollection.findOneAndUpdate(
@@ -107,7 +105,7 @@ export async function saveStudentMoocAction(formData: FormData, studentId: strin
       const idStr = updatedDoc._id.toHexString();
       const { _id, ...rest } = updatedDoc;
       savedMooc = { ...rest, id: idStr, _id: idStr } as MoocCourse;
-    } else { // Create new
+    } else { 
       const studentProfile = await fetchStudentFullProfileDataAction(studentId);
       if (!studentProfile) {
         throw new Error('Student profile not found, cannot determine submission semester.');
@@ -115,7 +113,7 @@ export async function saveStudentMoocAction(formData: FormData, studentId: strin
 
       const newMoocInternal: Omit<MoocCourse, 'id' | '_id'> = {
         ...moocData,
-        studentId, // already in moocData
+        studentId,
         submittedDate: new Date().toISOString(),
         status: 'Pending',
         submissionSemester: studentProfile.currentSemester,
@@ -138,7 +136,6 @@ export async function saveStudentMoocAction(formData: FormData, studentId: strin
 export async function deleteStudentMoocAction(moocId: string, studentId: string): Promise<boolean> {
   try {
     const moocsCollection = await getMoocsCollection();
-    // Potentially: Fetch MOOC, get certificateUrl, delete from Cloudinary if exists
     const result = await moocsCollection.deleteOne({ _id: new ObjectId(moocId), studentId });
     return result.deletedCount === 1;
   } catch (error) {
@@ -209,16 +206,16 @@ export async function saveStudentProjectAction(formData: FormData, studentId: st
       title,
       description,
       subject,
-      guideId: guideId === 'undefined' || guideId === '' ? undefined : guideId, // Handle empty string from FormData
+      guideId: guideId === 'undefined' || guideId === '' ? undefined : guideId, 
       pptUrl: pptCloudUrl,
       reportUrl: reportCloudUrl,
     };
 
 
-    if (id && id !== 'new') { // Update existing
+    if (id && id !== 'new') { 
       const dataToUpdate = { ...projectData };
-      delete (dataToUpdate as any).studentId; // studentId should not be changed on update
-      delete (dataToUpdate as any).submissionSemester; // submissionSemester should not be updated
+      delete (dataToUpdate as any).studentId; 
+      delete (dataToUpdate as any).submissionSemester; 
 
       const result = await projectsCollection.findOneAndUpdate(
         { _id: new ObjectId(id), studentId },
@@ -231,14 +228,14 @@ export async function saveStudentProjectAction(formData: FormData, studentId: st
       const { _id, ...rest } = updatedDoc;
       savedProject = { ...rest, id: idStr, _id: idStr } as MiniProject;
 
-    } else { // Create new
+    } else { 
       const studentProfile = await fetchStudentFullProfileDataAction(studentId);
       if (!studentProfile) {
         throw new Error('Student profile not found, cannot determine submission semester.');
       }
       const newProjectInternal: Omit<MiniProject, 'id' | '_id'> = {
         ...projectData,
-        studentId, // already in projectData
+        studentId, 
         submittedDate: new Date().toISOString(),
         status: 'Pending', 
         submissionSemester: studentProfile.currentSemester,
@@ -262,7 +259,6 @@ export async function saveStudentProjectAction(formData: FormData, studentId: st
 export async function deleteStudentProjectAction(projectId: string, studentId: string): Promise<boolean> {
   try {
     const projectsCollection = await getProjectsCollection();
-    // Potentially: Fetch Project, get pptUrl/reportUrl, delete from Cloudinary if exists
     const result = await projectsCollection.deleteOne({ _id: new ObjectId(projectId), studentId });
     return result.deletedCount === 1;
   } catch (error) {
@@ -309,6 +305,96 @@ export async function fetchPendingSubmissionsAction(facultyId: string): Promise<
     throw new Error('Failed to fetch pending submissions.');
   }
 }
+
+export async function fetchFacultyApprovedProjectsAction(facultyId: string): Promise<MiniProject[]> {
+  try {
+    const projectsCollection = await getProjectsCollection();
+    const studentProfilesCollection = await getStudentProfilesCollection();
+    const usersCollection = await getUsersCollection();
+
+    // Fetch projects approved by this facultyId
+    const approvedProjectsCursor = projectsCollection.find({ status: 'Approved', facultyId: facultyId });
+    const approvedProjectsArray = await approvedProjectsCursor.toArray();
+
+    const projectsWithDetails: MiniProject[] = [];
+    for (const projectDoc of approvedProjectsArray) {
+      let studentName = 'Unknown Student';
+      const studentProfile = await studentProfilesCollection.findOne({ userId: projectDoc.studentId });
+      if (studentProfile) {
+        studentName = studentProfile.fullName;
+      }
+      
+      let guideName = 'N/A';
+      if (projectDoc.guideId) {
+        const guideUser = ObjectId.isValid(projectDoc.guideId) 
+            ? await usersCollection.findOne({ _id: new ObjectId(projectDoc.guideId) })
+            : await usersCollection.findOne({ id: projectDoc.guideId });
+        if (guideUser) {
+          guideName = guideUser.name;
+        }
+      }
+      
+      const idStr = projectDoc._id.toHexString();
+      const { _id, ...rest } = projectDoc;
+      projectsWithDetails.push({
+        ...rest,
+        id: idStr,
+        _id: idStr,
+        studentName: studentName,
+        guideName: guideName,
+      } as MiniProject);
+    }
+    return projectsWithDetails;
+  } catch (error) {
+    console.error('Error fetching faculty approved projects:', error);
+    throw new Error('Failed to fetch projects approved by you.');
+  }
+}
+
+export async function fetchAllApprovedProjectsAction(): Promise<MiniProject[]> {
+  try {
+    const projectsCollection = await getProjectsCollection();
+    const studentProfilesCollection = await getStudentProfilesCollection();
+    const usersCollection = await getUsersCollection();
+
+    const approvedProjectsCursor = projectsCollection.find({ status: 'Approved' });
+    const approvedProjectsArray = await approvedProjectsCursor.toArray();
+
+    const projectsWithDetails: MiniProject[] = [];
+    for (const projectDoc of approvedProjectsArray) {
+      let studentName = 'Unknown Student';
+      const studentProfile = await studentProfilesCollection.findOne({ userId: projectDoc.studentId });
+      if (studentProfile) {
+        studentName = studentProfile.fullName;
+      }
+      
+      let guideName = 'N/A';
+      if (projectDoc.guideId) {
+         const guideUser = ObjectId.isValid(projectDoc.guideId) 
+            ? await usersCollection.findOne({ _id: new ObjectId(projectDoc.guideId) })
+            : await usersCollection.findOne({ id: projectDoc.guideId });
+        if (guideUser) {
+          guideName = guideUser.name;
+        }
+      }
+      
+      const idStr = projectDoc._id.toHexString();
+      const { _id, ...rest } = projectDoc;
+      projectsWithDetails.push({
+        ...rest,
+        id: idStr,
+        _id: idStr,
+        studentName: studentName,
+        guideName: guideName,
+      } as MiniProject);
+    }
+    return projectsWithDetails.sort((a, b) => new Date(b.submittedDate).getTime() - new Date(a.submittedDate).getTime()); // Sort by newest first
+  } catch (error) {
+    console.error('Error fetching all approved projects:', error);
+    throw new Error('Failed to fetch all approved projects.');
+  }
+}
+
 
 export async function updateSubmissionStatusAction(
   submissionId: string,
