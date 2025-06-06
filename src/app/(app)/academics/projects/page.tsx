@@ -11,7 +11,7 @@ import type { MiniProject, SubmissionStatus, User, StudentProfile } from '@/type
 import { FileText, UploadCloud, PlusCircle, Edit2, Trash2, CheckCircle, XCircle, Clock, UserCheck, CalendarDays, Download } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { FileUploadInput } from '@/components/core/FileUploadInput';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
@@ -166,9 +166,6 @@ export default function ProjectsPage() {
   };
 
   const handleEdit = (project: MiniProject) => {
-    if (!studentCurrentSemester || project.submissionSemester !== studentCurrentSemester) {
-        toast({ title: "Action Denied", description: "You can only edit projects from your current semester. Viewing details.", variant: "default"});
-    }
     setCurrentProject(project);
     setPptFile(null);
     setReportFile(null);
@@ -241,7 +238,7 @@ export default function ProjectsPage() {
 
   const getFormTitle = () => {
     if (!isFormVisible) return '';
-    if (!canInteractWithFormForCurrentSemester) return 'View Project Details';
+    if (!canInteractWithFormForCurrentSemester && currentProject.id && currentProject.id !== 'new') return 'View Project Details';
     if (isNewProjectInForm) return 'Submit New Project Proposal';
     if (isApprovedProjectInForm) return 'Upload/Update Project Files';
     if (isPendingOrRejectedInForm) return 'Edit Project Details';
@@ -250,7 +247,7 @@ export default function ProjectsPage() {
 
   const getFormDescription = () => {
      if (!isFormVisible) return '';
-     if (!canInteractWithFormForCurrentSemester) return 'Viewing details for a past semester project (read-only).';
+     if (!canInteractWithFormForCurrentSemester && currentProject.id && currentProject.id !== 'new') return 'Viewing details for a past semester project (read-only).';
      if (isNewProjectInForm) return 'Submit your project title, subject, description, and select a guide for approval. File uploads will be enabled after approval.';
      if (isApprovedProjectInForm) return 'Your project proposal has been approved. Please upload/update your PPT and Report files.';
      if (isPendingOrRejectedInForm) return 'Edit the details of your pending or rejected project submission.';
@@ -264,13 +261,16 @@ export default function ProjectsPage() {
     return 'Update Details';
   };
 
-  const formIsReadOnly = isFormVisible && !canInteractWithFormForCurrentSemester;
+  const formIsReadOnly = isFormVisible && !canInteractWithFormForCurrentSemester && currentProject.id !== 'new';
   const detailsAreReadOnly = formIsReadOnly || (canInteractWithFormForCurrentSemester && isApprovedProjectInForm);
 
 
   if (!user || user.role !== 'Student') {
     return <p>This page is for students to manage their projects.</p>;
   }
+
+  const formCardKey = isFormVisible ? (currentProject.id || 'new-project-form') : 'form-hidden';
+
 
   return (
     <div className="space-y-6">
@@ -296,7 +296,7 @@ export default function ProjectsPage() {
       </div>
 
       {isFormVisible && (
-        <Card className="shadow-lg">
+        <Card className="shadow-lg" key={formCardKey}>
           <CardHeader>
             <CardTitle>{getFormTitle()}</CardTitle>
             <CardDescription>
@@ -380,8 +380,8 @@ export default function ProjectsPage() {
                 </div>
 
 
-              {/* File Uploads Section - only if approved and for current semester, or if not approved but for current semester */}
-              {canInteractWithFormForCurrentSemester && (isApprovedProjectInForm || isPendingOrRejectedInForm || isNewProjectInForm) && (
+              {/* File Uploads Section */}
+               {(canInteractWithFormForCurrentSemester || formIsReadOnly) && (isApprovedProjectInForm || isPendingOrRejectedInForm || isNewProjectInForm) && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4 mt-4 border-dashed">
                   <FileUploadInput
                     id="pptFile"
@@ -389,7 +389,7 @@ export default function ProjectsPage() {
                     onFileChange={setPptFile}
                     accept=".pdf"
                     currentFile={currentProject.pptUrl}
-                    disabled={formIsReadOnly || isSubmitting}
+                    disabled={formIsReadOnly || isSubmitting || (detailsAreReadOnly && !isApprovedProjectInForm)}
                   />
                   <FileUploadInput
                     id="reportFile"
@@ -397,14 +397,14 @@ export default function ProjectsPage() {
                     onFileChange={setReportFile}
                     accept=".pdf"
                     currentFile={currentProject.reportUrl}
-                    disabled={formIsReadOnly || isSubmitting}
+                    disabled={formIsReadOnly || isSubmitting || (detailsAreReadOnly && !isApprovedProjectInForm)}
                   />
                 </div>
               )}
 
               {/* Submit Button Logic */}
-              {canInteractWithFormForCurrentSemester && (isNewProjectInForm || isPendingOrRejectedInForm || isApprovedProjectInForm) && (
-                 <Button type="submit" disabled={isSubmitting || formIsReadOnly} className="w-full md:w-auto">
+              {!formIsReadOnly && canInteractWithFormForCurrentSemester && (isNewProjectInForm || isPendingOrRejectedInForm || isApprovedProjectInForm) && (
+                 <Button type="submit" disabled={isSubmitting} className="w-full md:w-auto">
                     <UploadCloud className="mr-2 h-4 w-4" /> {getSubmitButtonText()}
                 </Button>
               )}
@@ -485,6 +485,11 @@ export default function ProjectsPage() {
                      {isCurrentSemProject && !canEditThisProject && proj.status !== 'Approved' && ( 
                         <p className="text-xs text-muted-foreground">Actions locked for this project.</p>
                      )}
+                     {isCurrentSemProject && proj.status === 'Approved' && !canEditThisProject && (
+                        // This case should not happen if canEditThisProject is true for approved current sem.
+                        // It might be that isCurrentSemProject is false if studentCurrentSemester is not loaded
+                        <p className="text-xs text-muted-foreground">Project approved (upload/view files).</p>
+                     )}
                   </CardFooter>
                 </Card>
               );
@@ -503,3 +508,4 @@ export default function ProjectsPage() {
     </div>
   );
 }
+
