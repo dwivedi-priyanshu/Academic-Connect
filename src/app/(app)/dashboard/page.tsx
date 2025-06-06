@@ -5,59 +5,184 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, Bell } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, Bell, BarChart as BarChartIcon, PieChart } from 'lucide-react';
 import Link from 'next/link';
-// Removed: import Image from 'next/image';
+import { useState, useEffect, useMemo } from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from '@/components/ui/skeleton';
+import { fetchStudentMarksAction } from '@/actions/student-data-actions';
+import type { SubjectMark } from '@/types';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+import { useToast } from "@/hooks/use-toast";
 
-// Placeholder components for role-specific dashboards
-const StudentDashboard = () => (
-  <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-    <Card className="shadow-lg hover:shadow-xl transition-shadow">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><UserCircle className="text-primary" /> My Profile</CardTitle>
-        <CardDescription>View and update your personal and academic information.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button asChild variant="outline">
-          <Link href="/profile">Go to Profile <ArrowRight className="ml-2 h-4 w-4" /></Link>
-        </Button>
-      </CardContent>
-    </Card>
-    <Card className="shadow-lg hover:shadow-xl transition-shadow">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><ClipboardList className="text-primary" /> My Marks</CardTitle>
-        <CardDescription>Check your internal assessment and assignment marks.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button asChild variant="outline">
-          <Link href="/academics/marks">View Marks <ArrowRight className="ml-2 h-4 w-4" /></Link>
-        </Button>
-      </CardContent>
-    </Card>
-    <Card className="shadow-lg hover:shadow-xl transition-shadow">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><FileText className="text-primary" /> My Projects</CardTitle>
-        <CardDescription>Submit and track your mini-project progress.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button asChild variant="outline">
-          <Link href="/academics/projects">Manage Projects <ArrowRight className="ml-2 h-4 w-4" /></Link>
-        </Button>
-      </CardContent>
-    </Card>
-    <Card className="shadow-lg hover:shadow-xl transition-shadow">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" /> My MOOCs</CardTitle>
-        <CardDescription>Upload and manage your MOOC certifications.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button asChild variant="outline">
-          <Link href="/academics/moocs">Manage MOOCs <ArrowRight className="ml-2 h-4 w-4" /></Link>
-        </Button>
-      </CardContent>
-    </Card>
-  </div>
-);
+
+const chartConfig = {
+  ia1: { label: "IAT 1 (Max 50)", color: "hsl(var(--chart-1))" },
+  ia2: { label: "IAT 2 (Max 50)", color: "hsl(var(--chart-2))" },
+} satisfies ChartConfig;
+
+const StudentDashboard = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [marksForChart, setMarksForChart] = useState<SubjectMark[]>([]);
+  const [isLoadingMarks, setIsLoadingMarks] = useState(true);
+  const [selectedSemesterForChart, setSelectedSemesterForChart] = useState<string>("1"); // Default to sem 1
+  const semestersForSelector = ["1", "2", "3", "4", "5", "6", "7", "8"];
+
+  useEffect(() => {
+    if (user && user.role === 'Student') {
+      setIsLoadingMarks(true);
+      const semesterNumber = parseInt(selectedSemesterForChart, 10);
+      
+      fetchStudentMarksAction(user.id, semesterNumber)
+        .then(data => {
+          setMarksForChart(data);
+          setIsLoadingMarks(false);
+        })
+        .catch(error => {
+           console.error("Failed to fetch marks for chart:", error);
+           toast({ title: "Error", description: "Could not load marks for the chart.", variant: "destructive" });
+           setIsLoadingMarks(false);
+        });
+    } else {
+      setIsLoadingMarks(false); 
+    }
+  }, [user, selectedSemesterForChart, toast]);
+
+  const marksChartData = useMemo(() => {
+    if (!marksForChart || marksForChart.length === 0) return [];
+    return marksForChart.map(mark => ({
+      subjectName: mark.subjectName.length > 15 ? `${mark.subjectName.substring(0,15)}...` : mark.subjectName, // Truncate long names
+      subjectCode: mark.subjectCode,
+      ia1: mark.ia1_50,
+      ia2: mark.ia2_50,
+    })).filter(mark => mark.ia1 !== null || mark.ia2 !== null); // Only include subjects with at least one IA mark
+  }, [marksForChart]);
+
+
+  return (
+    <>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="shadow-lg hover:shadow-xl transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><UserCircle className="text-primary" /> My Profile</CardTitle>
+            <CardDescription>View and update your personal and academic information.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link href="/profile">Go to Profile <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className="shadow-lg hover:shadow-xl transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><ClipboardList className="text-primary" /> My Marks</CardTitle>
+            <CardDescription>Check your internal assessment and assignment marks.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link href="/academics/marks">View Marks <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className="shadow-lg hover:shadow-xl transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><FileText className="text-primary" /> My Projects</CardTitle>
+            <CardDescription>Submit and track your mini-project progress.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link href="/academics/projects">Manage Projects <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className="shadow-lg hover:shadow-xl transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><BookOpen className="text-primary" /> My MOOCs</CardTitle>
+            <CardDescription>Upload and manage your MOOC certifications.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link href="/academics/moocs">Manage MOOCs <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="shadow-lg mt-8 col-span-1 md:col-span-2 lg:col-span-3">
+        <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+                <CardTitle className="flex items-center gap-2"><BarChartIcon className="text-primary" /> Internal Assessment Performance</CardTitle>
+                <CardDescription>IAT 1 vs IAT 2 marks for Semester {selectedSemesterForChart}.</CardDescription>
+            </div>
+            <div className="w-48">
+              <Select value={selectedSemesterForChart} onValueChange={setSelectedSemesterForChart}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Semester" />
+                </SelectTrigger>
+                <SelectContent>
+                  {semestersForSelector.map(sem => (
+                    <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+        </CardHeader>
+        <CardContent className="pl-2 pr-6">
+          {isLoadingMarks ? (
+            <div className="h-[350px] w-full flex items-center justify-center">
+                <Skeleton className="h-full w-full" />
+            </div>
+          ) : marksChartData.length > 0 ? (
+            <ChartContainer config={chartConfig} className="h-[350px] w-full">
+              <BarChart accessibilityLayer data={marksChartData} margin={{ top: 20, right: 0, left: -20, bottom: 5 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="subjectCode" // Using subject code for brevity on X-axis
+                  tickLine={false}
+                  tickMargin={10}
+                  axisLine={false}
+                  // tickFormatter={(value) => value.length > 10 ? `${value.substring(0,10)}...` : value} // Handled in useMemo now
+                />
+                <YAxis tickLine={false} axisLine={false} domain={[0, 50]}/>
+                <Tooltip
+                    cursor={false}
+                    content={
+                        <ChartTooltipContent 
+                            indicator="dot"
+                            formatter={(value, name, props) => {
+                                const { subjectName } = props.payload;
+                                return (
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{subjectName} ({props.payload.subjectCode})</span>
+                                    <span className="text-muted-foreground">
+                                      {name === 'ia1' ? chartConfig.ia1.label : chartConfig.ia2.label}: {value}
+                                    </span>
+                                  </div>
+                                );
+                            }}
+                        />
+                    }
+                />
+                <Legend />
+                <Bar dataKey="ia1" fill="var(--color-ia1)" radius={4} barSize={30} />
+                <Bar dataKey="ia2" fill="var(--color-ia2)" radius={4} barSize={30} />
+              </BarChart>
+            </ChartContainer>
+          ) : (
+            <div className="h-[350px] flex flex-col items-center justify-center text-muted-foreground">
+              <PieChart className="h-12 w-12 mb-2" />
+              <p className="text-lg">No IA marks available for Semester {selectedSemesterForChart}.</p>
+              <p>Marks will appear here once entered by your faculty.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
 
 const FacultyDashboard = () => (
   <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -94,6 +219,17 @@ const FacultyDashboard = () => (
         </Button>
       </CardContent>
     </Card>
+     <Card className="shadow-lg hover:shadow-xl transition-shadow">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><BarChartIcon className="text-primary" /> Performance Analysis</CardTitle>
+        <CardDescription>Analyze student marks and class performance.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button asChild variant="outline">
+          <Link href="/faculty/performance-analysis">View Analysis <ArrowRight className="ml-2 h-4 w-4" /></Link>
+        </Button>
+      </CardContent>
+    </Card>
   </div>
 );
 
@@ -110,15 +246,16 @@ const AdminDashboard = () => (
         </Button>
       </CardContent>
     </Card>
-     <Card className="shadow-lg hover:shadow-xl transition-shadow md:col-span-2">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><LayoutDashboard className="text-primary" /> System Overview</CardTitle>
-        <CardDescription>Monitor platform activity and statistics.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-muted-foreground">System statistics and monitoring tools would appear here.</p>
-        {/* Image removed from here */}
-      </CardContent>
+    <Card className="shadow-lg hover:shadow-xl transition-shadow">
+        <CardHeader>
+            <CardTitle className="flex items-center gap-2"><LayoutDashboard className="text-primary" /> Assignments</CardTitle>
+            <CardDescription>Manage faculty-subject and MOOC coordinator assignments.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <Button asChild variant="outline">
+                <Link href="/admin/assignments">Manage Assignments <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>
+        </CardContent>
     </Card>
   </div>
 );
@@ -128,7 +265,13 @@ export default function DashboardPage() {
   const { user } = useAuth();
 
   if (!user) {
-    return <p>Loading user data...</p>; // Or a skeleton loader
+    return (
+        <div className="flex flex-col items-center justify-center h-full p-10">
+            <LayoutDashboard className="w-16 h-16 mb-4 text-muted animate-pulse" />
+            <h2 className="text-2xl font-semibold mb-2 text-muted-foreground">Loading Dashboard...</h2>
+            <p className="text-muted-foreground">Please wait while we prepare your dashboard.</p>
+        </div>
+    );
   }
 
   const renderDashboardContent = () => {
@@ -163,3 +306,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
