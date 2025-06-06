@@ -3,9 +3,10 @@
 
 import { connectToDatabase } from '@/lib/mongodb';
 import { MOOCS_COLLECTION, PROJECTS_COLLECTION, STUDENT_PROFILES_COLLECTION, USERS_COLLECTION } from '@/lib/constants';
-import type { MiniProject, MoocCourse, SubmissionStatus, User, StudentProfile } from '@/types';
+import type { MiniProject, MoocCourse, SubmissionStatus, User, StudentProfile, MoocCourseWithStudentInfo } from '@/types';
 import { ObjectId } from 'mongodb';
 import type { Collection, Filter } from 'mongodb';
+import { fetchMoocCoordinatorForSemesterAction } from './faculty-actions';
 
 // Helper to get collections
 async function getMoocsCollection(): Promise<Collection<MoocCourse>> {
@@ -54,6 +55,7 @@ export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 's
       const { id, ...dataToUpdateFromClient } = moocData;
       const dataToUpdate = { ...dataToUpdateFromClient };
       delete (dataToUpdate as any)._id; 
+      delete (dataToUpdate as any).id; 
 
       const result = await moocsCollection.findOneAndUpdate(
         { _id: new ObjectId(id), studentId },
@@ -124,6 +126,7 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
       const { id, ...dataToUpdateFromClient } = projectData;
       const dataToUpdate = { ...dataToUpdateFromClient };
       delete (dataToUpdate as any)._id;
+      delete (dataToUpdate as any).id; 
 
       const result = await projectsCollection.findOneAndUpdate(
         { _id: new ObjectId(id), studentId },
@@ -171,7 +174,7 @@ export async function deleteStudentProjectAction(projectId: string, studentId: s
 }
 
 // Faculty Approval Actions
-export async function fetchPendingSubmissionsAction(facultyId: string): Promise<{ projects: MiniProject[], moocs: MoocCourse[] }> {
+export async function fetchPendingSubmissionsAction(facultyId: string): Promise<{ projects: MiniProject[], moocs: MoocCourseWithStudentInfo[] }> {
   try {
     console.log(`Fetching pending submissions (faculty: ${facultyId})`);
     
@@ -184,14 +187,25 @@ export async function fetchPendingSubmissionsAction(facultyId: string): Promise<
     });
 
     const moocsCollection = await getMoocsCollection();
+    const studentProfilesCollection = await getStudentProfilesCollection();
     const pendingMoocsCursor = moocsCollection.find({ status: 'Pending' });
-    const pendingMoocsArray = (await pendingMoocsCursor.toArray()).map(m => {
-        const idStr = m._id.toHexString();
-        const { _id, ...rest } = m;
-        return { ...rest, id: idStr, _id: idStr } as MoocCourse;
-    });
+    const pendingMoocsArray = await pendingMoocsCursor.toArray();
     
-    return { projects: pendingProjectsArray, moocs: pendingMoocsArray };
+    const moocsWithStudentInfo: MoocCourseWithStudentInfo[] = [];
+    for (const moocDoc of pendingMoocsArray) {
+        const studentProfile = await studentProfilesCollection.findOne({ userId: moocDoc.studentId });
+        const idStr = moocDoc._id.toHexString();
+        const { _id, ...restOfMooc } = moocDoc;
+        moocsWithStudentInfo.push({
+            ...restOfMooc,
+            id: idStr,
+            _id: idStr,
+            studentName: studentProfile?.fullName || 'Unknown Student',
+            studentSemester: studentProfile?.currentSemester || 0, // Default to 0 if not found
+        } as MoocCourseWithStudentInfo);
+    }
+    
+    return { projects: pendingProjectsArray, moocs: moocsWithStudentInfo };
   } catch (error) {
     console.error('Error fetching pending submissions:', error);
     throw new Error('Failed to fetch pending submissions.');
@@ -201,38 +215,46 @@ export async function fetchPendingSubmissionsAction(facultyId: string): Promise<
 export async function updateSubmissionStatusAction(
   submissionId: string,
   type: 'project' | 'mooc',
-  newStatus: SubmissionStatus, // Renamed from 'status' to 'newStatus' to avoid conflict
+  newStatus: SubmissionStatus, 
   remarks: string,
-  facultyId: string // The ID of the faculty member performing the action
+  facultyId: string 
 ): Promise<boolean> {
   try {
     let collection: Collection<MiniProject> | Collection<MoocCourse>;
-    let submissionDocument: MiniProject | MoocCourse | null = null;
-
+    
     if (type === 'project') {
       collection = await getProjectsCollection();
-      submissionDocument = await collection.findOne({ _id: new ObjectId(submissionId) }) as MiniProject | null;
+      const project = await collection.findOne({ _id: new ObjectId(submissionId) }) as MiniProject | null;
       
-      if (submissionDocument) {
-        const project = submissionDocument as MiniProject;
-        if (!project.guideId) {
-          throw new Error("Project cannot be actioned: No guide has been assigned.");
-        }
-        if (project.guideId !== facultyId) {
-          throw new Error("Action restricted: You are not the assigned guide for this project.");
-        }
-      } else {
-        throw new Error("Project not found.");
+      if (!project) throw new Error("Project not found.");
+      if (!project.guideId) {
+        throw new Error("Project cannot be actioned: No guide has been assigned.");
       }
-
+      if (project.guideId !== facultyId) {
+        throw new Error("Action restricted: You are not the assigned guide for this project.");
+      }
     } else { // type === 'mooc'
       collection = await getMoocsCollection();
-      // For MOOCs, any faculty can approve/reject for now as no guide concept.
+      const mooc = await collection.findOne({ _id: new ObjectId(submissionId) }) as MoocCourse | null;
+      if (!mooc) throw new Error("MOOC submission not found.");
+
+      const studentProfilesCollection = await getStudentProfilesCollection();
+      const studentProfile = await studentProfilesCollection.findOne({ userId: mooc.studentId });
+      if (!studentProfile || !studentProfile.currentSemester) {
+        throw new Error("Action failed: Could not determine student's semester for MOOC approval.");
+      }
+
+      const coordinator = await fetchMoocCoordinatorForSemesterAction(studentProfile.currentSemester);
+      if (!coordinator) {
+        throw new Error(`Action failed: No MOOC coordinator is assigned for Semester ${studentProfile.currentSemester}.`);
+      }
+      if (coordinator.facultyId !== facultyId) {
+        throw new Error(`Action restricted: You are not the MOOC coordinator for Semester ${studentProfile.currentSemester}.`);
+      }
     }
     
     const result = await collection.updateOne(
       { _id: new ObjectId(submissionId) },
-      // For MOOCs, and for projects if checks pass:
       { $set: { status: newStatus, remarks, facultyId } } 
     );
     return result.modifiedCount === 1;
@@ -244,3 +266,4 @@ export async function updateSubmissionStatusAction(
     throw new Error(`Failed to update ${type} status.`);
   }
 }
+

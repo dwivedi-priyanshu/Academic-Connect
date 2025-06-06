@@ -1,4 +1,5 @@
 
+
 export type UserRole = 'Student' | 'Faculty' | 'Admin';
 export type UserStatus = 'PendingApproval' | 'Active' | 'Rejected' | 'Disabled';
 
@@ -68,10 +69,10 @@ export interface MiniProject {
   reportUrl?: string; 
   submittedDate: string; 
   status: SubmissionStatus;
-  facultyId?: string; 
+  facultyId?: string; // User ID of faculty who actioned it
   remarks?: string;
   subject: string;
-  guideId?: string; 
+  guideId?: string; // User ID of assigned faculty guide
 }
 
 export interface MoocCourse {
@@ -86,9 +87,16 @@ export interface MoocCourse {
   creditsEarned?: number;
   submittedDate: string; 
   status: SubmissionStatus;
-  facultyId?: string; 
+  facultyId?: string; // User ID of faculty who actioned it
   remarks?: string;
 }
+
+// Added for enhanced MOOC data in approvals
+export interface MoocCourseWithStudentInfo extends MoocCourse {
+  studentName: string;
+  studentSemester: number;
+}
+
 
 export interface FacultySubjectAssignment {
   _id?: any;
@@ -98,6 +106,13 @@ export interface FacultySubjectAssignment {
   subjectName: string; // For easier display
   semester: number;
   section: string;
+}
+
+export interface MoocCoordinatorAssignment {
+  _id?: any;
+  id: string;
+  facultyId: string; // User ID of the faculty assigned as MOOC coordinator
+  semester: number; // The semester for which they are the coordinator
 }
 
 
@@ -121,3 +136,4 @@ export const MOCK_USER_ADMIN_DATA: Omit<User, 'id' | '_id' | 'status'> = {
   role: 'Admin',
   avatar: 'https://picsum.photos/seed/admin789/100/100',
 };
+

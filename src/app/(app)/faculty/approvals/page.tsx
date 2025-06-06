@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
-import type { MiniProject, MoocCourse, SubmissionStatus } from '@/types';
-import { CheckSquare, CheckCircle, XCircle, Clock, Download, Eye, ShieldAlert } from 'lucide-react';
+import type { MiniProject, MoocCourseWithStudentInfo, SubmissionStatus, MoocCoordinatorAssignment } from '@/types';
+import { CheckSquare, CheckCircle, XCircle, Clock, Download, Eye, ShieldAlert, Info } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
 import { fetchPendingSubmissionsAction, updateSubmissionStatusAction } from '@/actions/academic-submission-actions';
+import { fetchMoocCoordinatorAssignmentsForFaculty } from '@/actions/faculty-actions';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 
@@ -22,25 +23,31 @@ export default function ApprovalsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [pendingProjects, setPendingProjects] = useState<MiniProject[]>([]);
-  const [pendingMoocs, setPendingMoocs] = useState<MoocCourse[]>([]);
+  const [pendingMoocs, setPendingMoocs] = useState<MoocCourseWithStudentInfo[]>([]);
+  const [facultyMoocCoordinationSemesters, setFacultyMoocCoordinationSemesters] = useState<number[]>([]);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
   const [remarks, setRemarks] = useState("");
-  const [currentSubmission, setCurrentSubmission] = useState<{id: string, type: 'project' | 'mooc', title: string, guideId?: string} | null>(null);
+  const [currentSubmission, setCurrentSubmission] = useState<{id: string, type: 'project' | 'mooc', title: string, studentSemester?: number, guideId?: string} | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionType, setActionType] = useState<SubmissionStatus | null>(null);
 
 
-  const loadPendingSubmissions = async () => {
+  const loadData = async () => {
     if (user && user.role === 'Faculty') {
       setIsLoading(true);
       try {
-        const data = await fetchPendingSubmissionsAction(user.id);
-        setPendingProjects(data.projects);
-        setPendingMoocs(data.moocs);
+        const [pendingData, coordinationAssignments] = await Promise.all([
+          fetchPendingSubmissionsAction(user.id),
+          fetchMoocCoordinatorAssignmentsForFaculty(user.id)
+        ]);
+        setPendingProjects(pendingData.projects);
+        setPendingMoocs(pendingData.moocs);
+        setFacultyMoocCoordinationSemesters(coordinationAssignments.map(a => a.semester));
       } catch (error) {
-        console.error("Error fetching pending submissions:", error);
-        toast({ title: "Error", description: "Could not load pending submissions.", variant: "destructive" });
+        console.error("Error loading data for approvals page:", error);
+        toast({ title: "Error", description: "Could not load pending submissions or coordinator assignments.", variant: "destructive" });
       } finally {
         setIsLoading(false);
       }
@@ -49,16 +56,20 @@ export default function ApprovalsPage() {
 
   useEffect(() => {
     if (user && user.role === 'Faculty') {
-      loadPendingSubmissions();
+      loadData();
     } else {
       setIsLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, toast]);
 
-  const handleAction = (submissionId: string, type: 'project' | 'mooc', title: string, decStatus: SubmissionStatus, guideId?: string) => {
-    setCurrentSubmission({ id: submissionId, type, title, guideId });
-    setActionType(decStatus); // Store which button was clicked (Approve/Reject)
+  const handleAction = (item: MiniProject | MoocCourseWithStudentInfo, type: 'project' | 'mooc', decStatus: SubmissionStatus) => {
+    const title = type === 'project' ? (item as MiniProject).title : (item as MoocCourseWithStudentInfo).courseName;
+    const studentSemester = type === 'mooc' ? (item as MoocCourseWithStudentInfo).studentSemester : undefined;
+    const guideId = type === 'project' ? (item as MiniProject).guideId : undefined;
+
+    setCurrentSubmission({ id: item.id, type, title, studentSemester, guideId });
+    setActionType(decStatus); 
     setRemarks("");
     setIsModalOpen(true);
   };
@@ -70,61 +81,73 @@ export default function ApprovalsPage() {
     try {
       await updateSubmissionStatusAction(currentSubmission.id, currentSubmission.type, actionType, remarks, user.id);
       toast({ title: "Submission Updated", description: `${currentSubmission.type === 'project' ? 'Project' : 'MOOC'} "${currentSubmission.title}" status updated to ${actionType}.`, className: "bg-success text-success-foreground" });
-      await loadPendingSubmissions(); // Refresh list
-      setIsModalOpen(false); // Close modal on success
+      await loadData(); // Refresh list
+      setIsModalOpen(false); 
     } catch (error) {
         toast({ title: "Update Failed", description: (error as Error).message || "Could not update submission status.", variant: "destructive" });
-        // Keep modal open on error to allow user to see message or retry
     } finally {
       setIsSubmittingDecision(false);
-      // Don't reset currentSubmission or actionType here, in case modal stays open on error
     }
   };
 
-  const renderSubmissionCard = (item: MiniProject | MoocCourse, type: 'project' | 'mooc') => {
-    const title = type === 'project' ? (item as MiniProject).title : (item as MoocCourse).courseName;
+  const renderSubmissionCard = (item: MiniProject | MoocCourseWithStudentInfo, type: 'project' | 'mooc') => {
+    const title = type === 'project' ? (item as MiniProject).title : (item as MoocCourseWithStudentInfo).courseName;
+    const studentIdentifier = type === 'project' 
+        ? `Student ID: ${(item as MiniProject).studentId}` 
+        : `Student: ${(item as MoocCourseWithStudentInfo).studentName} (Sem ${(item as MoocCourseWithStudentInfo).studentSemester || 'N/A'})`;
+
     const details = type === 'project' ? [
       `Subject: ${(item as MiniProject).subject}`,
       `Description: ${(item as MiniProject).description}`,
       `PPT: ${(item as MiniProject).pptUrl || 'N/A'}`, 
       `Report: ${(item as MiniProject).reportUrl || 'N/A'}`,
-      `Guide ID: ${(item as MiniProject).guideId || 'Not Assigned'}`,
+      `Assigned Guide: ${(item as MiniProject).guideId ? `Faculty ID: ${(item as MiniProject).guideId}` : 'Not Assigned Yet'}`,
     ] : [
-      `Platform: ${(item as MoocCourse).platform}`,
-      `Duration: ${format(new Date((item as MoocCourse).startDate), "PP")} - ${format(new Date((item as MoocCourse).endDate), "PP")}`,
-      `Certificate: ${(item as MoocCourse).certificateUrl || 'N/A'}`,
-      `Credits: ${(item as MoocCourse).creditsEarned ?? 'N/A'}`, // Use ?? for creditsEarned
+      `Platform: ${(item as MoocCourseWithStudentInfo).platform}`,
+      `Duration: ${format(new Date((item as MoocCourseWithStudentInfo).startDate), "PP")} - ${format(new Date((item as MoocCourseWithStudentInfo).endDate), "PP")}`,
+      `Certificate: ${(item as MoocCourseWithStudentInfo).certificateUrl || 'N/A'}`,
+      `Credits: ${(item as MoocCourseWithStudentInfo).creditsEarned ?? 'N/A'}`, 
     ];
 
-    let projectActionDisabled = false;
-    let projectTooltipMessage = "";
+    let actionDisabled = false;
+    let actionTooltipMessage = "";
 
     if (type === 'project' && user) {
         const projectItem = item as MiniProject;
         if (!projectItem.guideId) {
-            projectActionDisabled = true;
-            projectTooltipMessage = "Action disabled: No guide assigned to this project.";
+            actionDisabled = true;
+            actionTooltipMessage = "Action disabled: No guide assigned to this project.";
         } else if (projectItem.guideId !== user.id) {
-            projectActionDisabled = true;
-            projectTooltipMessage = "Action restricted: You are not the assigned guide.";
+            actionDisabled = true;
+            actionTooltipMessage = "Action restricted: You are not the assigned guide for this project.";
+        }
+    } else if (type === 'mooc' && user) {
+        const moocItem = item as MoocCourseWithStudentInfo;
+        if (!moocItem.studentSemester) {
+             actionDisabled = true;
+             actionTooltipMessage = "Action unavailable: Student's semester information is missing.";
+        } else if (!facultyMoocCoordinationSemesters.includes(moocItem.studentSemester)) {
+            actionDisabled = true;
+            actionTooltipMessage = `Action restricted: You are not the MOOC coordinator for Semester ${moocItem.studentSemester}.`;
         }
     }
+
 
     const actionButtons = (
         <div className="flex justify-end gap-2">
             <Button 
                 size="sm" 
                 className="bg-success hover:bg-success/90 text-success-foreground" 
-                onClick={() => handleAction(item.id, type, title, 'Approved', (item as MiniProject).guideId)} 
-                disabled={isSubmittingDecision || projectActionDisabled}
+                onClick={() => handleAction(item, type, 'Approved')} 
+                disabled={isSubmittingDecision || actionDisabled}
             >
                 <CheckCircle className="mr-1 h-4 w-4" /> Approve
             </Button>
             <Button 
                 variant="destructive" 
                 size="sm" 
-                onClick={() => handleAction(item.id, type, title, 'Rejected', (item as MiniProject).guideId)} 
-                disabled={isSubmittingDecision || projectActionDisabled}
+                onClick={() => handleAction(item, type, 'Rejected')} 
+                disabled={isSubmittingDecision || actionDisabled}
             >
                 <XCircle className="mr-1 h-4 w-4" /> Reject
             </Button>
@@ -138,13 +161,16 @@ export default function ApprovalsPage() {
             <CardTitle className="text-lg">{title}</CardTitle>
             <Badge variant="default" className="bg-warning text-warning-foreground"><Clock className="mr-1 h-3 w-3"/>Pending</Badge>
           </div>
-          <CardDescription>Student ID: {item.studentId} | Submitted: {format(new Date(item.submittedDate), "PPP")}</CardDescription>
+          <CardDescription>{studentIdentifier} | Submitted: {format(new Date(item.submittedDate), "PPP")}</CardDescription>
         </CardHeader>
         <CardContent className="text-sm space-y-1">
           {details.map((detail, i) => <p key={i}>{detail}</p>)}
+           {actionDisabled && (
+                <p className="text-xs text-destructive mt-2 flex items-center"><ShieldAlert className="inline mr-1 h-4 w-4"/> {actionTooltipMessage}</p>
+            )}
         </CardContent>
         <CardFooter>
-            {type === 'project' && projectActionDisabled ? (
+            {actionDisabled ? (
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
@@ -153,16 +179,19 @@ export default function ApprovalsPage() {
                                 <Button variant="destructive" size="sm" disabled={true}><XCircle className="mr-1 h-4 w-4" /> Reject</Button>
                             </div>
                         </TooltipTrigger>
-                        <TooltipContent className="bg-destructive text-destructive-foreground">
-                            <p><ShieldAlert className="inline mr-1 h-4 w-4"/>{projectTooltipMessage}</p>
+                        <TooltipContent className="bg-destructive text-destructive-foreground max-w-xs">
+                            <p><ShieldAlert className="inline mr-1 h-4 w-4"/>{actionTooltipMessage}</p>
                         </TooltipContent>
                     </Tooltip>
                 </TooltipProvider>
             ) : (
                 actionButtons
             )}
-             {/* Mock view/download buttons; in a real app, these would link to actual files */}
-             {type !== 'project' && (item as any).certificateUrl && <Button variant="outline" size="sm" onClick={() => alert(`Viewing Certificate: ${(item as any).certificateUrl}`)}><Download className="mr-1 h-3 w-3"/> View Cert.</Button>}
+             {type === 'mooc' && (item as MoocCourseWithStudentInfo).certificateUrl && 
+                <Button variant="outline" size="sm" className="ml-auto" onClick={() => alert(`Viewing Certificate: ${(item as MoocCourseWithStudentInfo).certificateUrl}`)}>
+                    <Download className="mr-1 h-3 w-3"/> View Cert.
+                </Button>
+             }
         </CardFooter>
       </Card>
     );
@@ -185,11 +214,12 @@ export default function ApprovalsPage() {
           <Card className="shadow-none border-0">
             <CardHeader>
               <CardTitle>Pending Mini-Project Approvals</CardTitle>
-              <CardDescription>Review and approve or reject student mini-project submissions. Action permitted only if you are the assigned guide.</CardDescription>
+              <CardDescription>Review projects. Action permitted only if you are the assigned guide.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {isLoading ? <p>Loading project submissions...</p> : 
-               pendingProjects.length > 0 ? pendingProjects.map(proj => renderSubmissionCard(proj, 'project')) : <p className="text-muted-foreground">No pending project approvals.</p>}
+               pendingProjects.length > 0 ? pendingProjects.map(proj => renderSubmissionCard(proj, 'project')) : 
+               <p className="text-muted-foreground p-4 border rounded-md flex items-center gap-2"><Info className="h-5 w-5"/>No pending project approvals, or you are not assigned as a guide to any pending projects.</p>}
             </CardContent>
           </Card>
         </TabsContent>
@@ -197,20 +227,21 @@ export default function ApprovalsPage() {
           <Card className="shadow-none border-0">
             <CardHeader>
               <CardTitle>Pending MOOC Approvals</CardTitle>
-              <CardDescription>Review and approve or reject student MOOC submissions.</CardDescription>
+              <CardDescription>Review MOOCs. Action permitted only if you are the MOOC Coordinator for the student's current semester.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {isLoading ? <p>Loading MOOC submissions...</p> :
-               pendingMoocs.length > 0 ? pendingMoocs.map(mooc => renderSubmissionCard(mooc, 'mooc')) : <p className="text-muted-foreground">No pending MOOC approvals.</p>}
+               pendingMoocs.length > 0 ? pendingMoocs.map(mooc => renderSubmissionCard(mooc, 'mooc')) : 
+               <p className="text-muted-foreground p-4 border rounded-md flex items-center gap-2"><Info className="h-5 w-5"/>No pending MOOC approvals, or you are not assigned as coordinator for any relevant student semesters.</p>}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
       <Dialog open={isModalOpen} onOpenChange={(isOpen) => {
-          if (isSubmittingDecision && !isOpen) return; // Prevent closing if submitting
+          if (isSubmittingDecision && !isOpen) return; 
           setIsModalOpen(isOpen);
-          if (!isOpen) { // Reset if modal is closed
+          if (!isOpen) { 
             setCurrentSubmission(null);
             setActionType(null);
             setRemarks("");
@@ -242,7 +273,7 @@ export default function ApprovalsPage() {
             <Button variant="outline" onClick={() => setIsModalOpen(false)} disabled={isSubmittingDecision}>Cancel</Button>
             <Button 
               onClick={submitDecision} 
-              disabled={isSubmittingDecision || (actionType === 'Rejected' && !remarks.trim())} // Require remarks for rejection
+              disabled={isSubmittingDecision || (actionType === 'Rejected' && !remarks.trim())} 
               className={actionType === 'Approved' ? "bg-success hover:bg-success/90 text-success-foreground" : "bg-destructive hover:bg-destructive/90 text-destructive-foreground"}
             >
               {actionType === 'Approved' ? <CheckCircle className="mr-2 h-4 w-4" /> : <XCircle className="mr-2 h-4 w-4" />}
@@ -254,3 +285,4 @@ export default function ApprovalsPage() {
     </div>
   );
 }
+
