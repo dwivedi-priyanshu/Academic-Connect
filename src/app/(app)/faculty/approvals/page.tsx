@@ -99,13 +99,10 @@ export default function ApprovalsPage() {
     const details = type === 'project' ? [
       `Subject: ${(item as MiniProject).subject}`,
       `Description: ${(item as MiniProject).description}`,
-      `PPT: ${(item as MiniProject).pptUrl || 'N/A'}`, 
-      `Report: ${(item as MiniProject).reportUrl || 'N/A'}`,
       `Assigned Guide: ${(item as MiniProject).guideId ? `Faculty ID: ${(item as MiniProject).guideId}` : 'Not Assigned Yet'}`,
     ] : [
       `Platform: ${(item as MoocCourseWithStudentInfo).platform}`,
       `Duration: ${format(new Date((item as MoocCourseWithStudentInfo).startDate), "PP")} - ${format(new Date((item as MoocCourseWithStudentInfo).endDate), "PP")}`,
-      `Certificate: ${(item as MoocCourseWithStudentInfo).certificateUrl || 'N/A'}`,
       `Credits: ${(item as MoocCourseWithStudentInfo).creditsEarned ?? 'N/A'}`, 
     ];
 
@@ -165,6 +162,33 @@ export default function ApprovalsPage() {
         </CardHeader>
         <CardContent className="text-sm space-y-1">
           {details.map((detail, i) => <p key={i}>{detail}</p>)}
+          
+          {type === 'mooc' && (item as MoocCourseWithStudentInfo).certificateUrl && 
+            <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline mt-2">
+                <a href={(item as MoocCourseWithStudentInfo).certificateUrl} target="_blank" rel="noopener noreferrer">
+                    <Download className="mr-1 h-3 w-3"/> View Certificate
+                </a>
+            </Button>
+          }
+          {type === 'project' && (
+            <div className="mt-2 space-x-2">
+                {(item as MiniProject).pptUrl && 
+                    <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline">
+                        <a href={(item as MiniProject).pptUrl} target="_blank" rel="noopener noreferrer">
+                            <Download className="mr-1 h-3 w-3"/> View PPT
+                        </a>
+                    </Button>
+                }
+                {(item as MiniProject).reportUrl && 
+                    <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline">
+                        <a href={(item as MiniProject).reportUrl} target="_blank" rel="noopener noreferrer">
+                            <Download className="mr-1 h-3 w-3"/> View Report
+                        </a>
+                    </Button>
+                }
+            </div>
+          )}
+
            {actionDisabled && (
                 <p className="text-xs text-destructive mt-2 flex items-center"><ShieldAlert className="inline mr-1 h-4 w-4"/> {actionTooltipMessage}</p>
             )}
@@ -187,11 +211,6 @@ export default function ApprovalsPage() {
             ) : (
                 actionButtons
             )}
-             {type === 'mooc' && (item as MoocCourseWithStudentInfo).certificateUrl && 
-                <Button variant="outline" size="sm" className="ml-auto" onClick={() => alert(`Viewing Certificate: ${(item as MoocCourseWithStudentInfo).certificateUrl}`)}>
-                    <Download className="mr-1 h-3 w-3"/> View Cert.
-                </Button>
-             }
         </CardFooter>
       </Card>
     );
