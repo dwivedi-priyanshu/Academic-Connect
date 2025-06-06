@@ -7,6 +7,7 @@ import type { MiniProject, MoocCourse, SubmissionStatus, User, StudentProfile, M
 import { ObjectId } from 'mongodb';
 import type { Collection, Filter } from 'mongodb';
 import { fetchMoocCoordinatorForSemesterAction } from './faculty-actions';
+import { fetchStudentFullProfileDataAction } from './profile-actions'; // Import for fetching student profile
 
 // Helper to get collections
 async function getMoocsCollection(): Promise<Collection<MoocCourse>> {
@@ -30,10 +31,14 @@ async function getUsersCollection(): Promise<Collection<User>> {
 
 
 // MOOC Actions
-export async function fetchStudentMoocsAction(studentId: string): Promise<MoocCourse[]> {
+export async function fetchStudentMoocsAction(studentId: string, semester?: number): Promise<MoocCourse[]> {
   try {
     const moocsCollection = await getMoocsCollection();
-    const moocsCursor = moocsCollection.find({ studentId });
+    const query: Filter<MoocCourse> = { studentId };
+    if (semester !== undefined && !isNaN(semester)) {
+      query.submissionSemester = semester;
+    }
+    const moocsCursor = moocsCollection.find(query);
     const moocsArray = await moocsCursor.toArray();
     return moocsArray.map(mooc => {
         const idStr = mooc._id.toHexString();
@@ -46,7 +51,7 @@ export async function fetchStudentMoocsAction(studentId: string): Promise<MoocCo
   }
 }
 
-export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 'submittedDate' | 'status' | '_id'> & { id?: string }, studentId: string): Promise<MoocCourse> {
+export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 'submittedDate' | 'status' | '_id' | 'submissionSemester'> & { id?: string }, studentId: string): Promise<MoocCourse> {
   try {
     const moocsCollection = await getMoocsCollection();
     let savedMooc: MoocCourse;
@@ -56,6 +61,7 @@ export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 's
       const dataToUpdate = { ...dataToUpdateFromClient };
       delete (dataToUpdate as any)._id; 
       delete (dataToUpdate as any).id; 
+      // submissionSemester should not be updated after initial creation
 
       const result = await moocsCollection.findOneAndUpdate(
         { _id: new ObjectId(id), studentId },
@@ -68,11 +74,17 @@ export async function saveStudentMoocAction(moocData: Omit<MoocCourse, 'id' | 's
       const { _id, ...rest } = updatedDoc;
       savedMooc = { ...rest, id: idStr, _id: idStr } as MoocCourse;
     } else { // Create new
+      const studentProfile = await fetchStudentFullProfileDataAction(studentId);
+      if (!studentProfile) {
+        throw new Error('Student profile not found, cannot determine submission semester.');
+      }
+
       const newMoocInternal: Omit<MoocCourse, 'id' | '_id'> = {
         ...moocData,
         studentId,
         submittedDate: new Date().toISOString(),
         status: 'Pending',
+        submissionSemester: studentProfile.currentSemester, // Set submission semester
       };
       const result = await moocsCollection.insertOne(newMoocInternal as MoocCourse);
       const insertedIdStr = result.insertedId.toHexString();
@@ -101,10 +113,14 @@ export async function deleteStudentMoocAction(moocId: string, studentId: string)
 }
 
 // Project Actions
-export async function fetchStudentProjectsAction(studentId: string): Promise<MiniProject[]> {
+export async function fetchStudentProjectsAction(studentId: string, semester?: number): Promise<MiniProject[]> {
   try {
     const projectsCollection = await getProjectsCollection();
-    const projectsCursor = projectsCollection.find({ studentId });
+    const query: Filter<MiniProject> = { studentId };
+    if (semester !== undefined && !isNaN(semester)) {
+      query.submissionSemester = semester;
+    }
+    const projectsCursor = projectsCollection.find(query);
     const projectsArray = await projectsCursor.toArray();
     return projectsArray.map(proj => {
         const idStr = proj._id.toHexString();
@@ -117,7 +133,7 @@ export async function fetchStudentProjectsAction(studentId: string): Promise<Min
   }
 }
 
-export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'id' | 'submittedDate' | 'status' | '_id' | 'guideId'> & { id?: string; guideId?: string; }, studentId: string): Promise<MiniProject> {
+export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'id' | 'submittedDate' | 'status' | '_id' | 'guideId'| 'submissionSemester'> & { id?: string; guideId?: string; }, studentId: string): Promise<MiniProject> {
   try {
     const projectsCollection = await getProjectsCollection();
     let savedProject: MiniProject;
@@ -127,6 +143,7 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
       const dataToUpdate = { ...dataToUpdateFromClient };
       delete (dataToUpdate as any)._id;
       delete (dataToUpdate as any).id; 
+      // submissionSemester should not be updated
 
       const result = await projectsCollection.findOneAndUpdate(
         { _id: new ObjectId(id), studentId },
@@ -140,12 +157,17 @@ export async function saveStudentProjectAction(projectData: Omit<MiniProject, 'i
       savedProject = { ...rest, id: idStr, _id: idStr } as MiniProject;
 
     } else { // Create new
+      const studentProfile = await fetchStudentFullProfileDataAction(studentId);
+      if (!studentProfile) {
+        throw new Error('Student profile not found, cannot determine submission semester.');
+      }
       const newProjectInternal: Omit<MiniProject, 'id' | '_id'> = {
         ...projectData,
         studentId,
         submittedDate: new Date().toISOString(),
         status: 'Pending', 
-        // guideId can be passed in projectData if student selects it
+        submissionSemester: studentProfile.currentSemester, // Set submission semester
+        guideId: projectData.guideId,
       };
       const result = await projectsCollection.insertOne(newProjectInternal as MiniProject);
       const insertedIdStr = result.insertedId.toHexString();
@@ -201,7 +223,7 @@ export async function fetchPendingSubmissionsAction(facultyId: string): Promise<
             id: idStr,
             _id: idStr,
             studentName: studentProfile?.fullName || 'Unknown Student',
-            studentSemester: studentProfile?.currentSemester || 0, // Default to 0 if not found
+            studentSemester: studentProfile?.currentSemester || 0, 
         } as MoocCourseWithStudentInfo);
     }
     
@@ -238,10 +260,11 @@ export async function updateSubmissionStatusAction(
       const mooc = await collection.findOne({ _id: new ObjectId(submissionId) }) as MoocCourse | null;
       if (!mooc) throw new Error("MOOC submission not found.");
 
-      const studentProfilesCollection = await getStudentProfilesCollection();
-      const studentProfile = await studentProfilesCollection.findOne({ userId: mooc.studentId });
+      // For MOOCs, the studentSemester is the student's current semester *at the time of processing by faculty*
+      // This is determined by fetching the student's profile again here or relying on data passed in (safer to re-fetch)
+      const studentProfile = await fetchStudentFullProfileDataAction(mooc.studentId);
       if (!studentProfile || !studentProfile.currentSemester) {
-        throw new Error("Action failed: Could not determine student's semester for MOOC approval.");
+        throw new Error("Action failed: Could not determine student's current semester for MOOC approval.");
       }
 
       const coordinator = await fetchMoocCoordinatorForSemesterAction(studentProfile.currentSemester);

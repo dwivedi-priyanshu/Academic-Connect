@@ -69,10 +69,11 @@ export interface MiniProject {
   reportUrl?: string; 
   submittedDate: string; 
   status: SubmissionStatus;
-  facultyId?: string; // User ID of faculty who actioned it
+  facultyId?: string; 
   remarks?: string;
   subject: string;
-  guideId?: string; // User ID of assigned faculty guide
+  guideId?: string; 
+  submissionSemester: number; 
 }
 
 export interface MoocCourse {
@@ -87,13 +88,15 @@ export interface MoocCourse {
   creditsEarned?: number;
   submittedDate: string; 
   status: SubmissionStatus;
-  facultyId?: string; // User ID of faculty who actioned it
+  facultyId?: string; 
   remarks?: string;
+  submissionSemester: number; 
 }
 
 export interface MoocCourseWithStudentInfo extends MoocCourse {
   studentName: string;
-  studentSemester: number;
+  studentSemester: number; // This refers to student's current semester at time of MOOC processing by faculty
+                           // The `submissionSemester` on MoocCourse is when student *submitted* it
 }
 
 
@@ -101,7 +104,7 @@ export interface FacultySubjectAssignment {
   _id?: any;
   id: string;
   facultyId: string; 
-  facultyName?: string; // Added for easier display on admin page
+  facultyName?: string; 
   subjectCode: string;
   subjectName: string; 
   semester: number;
@@ -112,7 +115,7 @@ export interface MoocCoordinatorAssignment {
   _id?: any;
   id: string;
   facultyId: string; 
-  facultyName?: string; // Added for easier display on admin page
+  facultyName?: string; 
   semester: number; 
 }
 
