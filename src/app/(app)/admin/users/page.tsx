@@ -3,7 +3,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass, KeyRound, Edit } from 'lucide-react';
+import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass, KeyRound, Edit, Save } from 'lucide-react'; // Added Save here
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { User, UserStatus, StudentProfile } from '@/types'; 
