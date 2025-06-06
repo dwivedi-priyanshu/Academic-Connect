@@ -120,6 +120,12 @@ export interface MoocCoordinatorAssignment {
   semester: number; 
 }
 
+// For Class Performance Page
+export interface StudentClassPerformanceDetails {
+  profile: StudentProfile;
+  marksBySubject: Record<string, SubjectMark | undefined>; // Keyed by subjectCode
+}
+
 
 export const MOCK_USER_STUDENT_DATA: Omit<User, 'id' | '_id' | 'status'> = {
   email: 'student@example.com',
@@ -141,4 +147,3 @@ export const MOCK_USER_ADMIN_DATA: Omit<User, 'id' | '_id' | 'status'> = {
   role: 'Admin',
   avatar: 'https://picsum.photos/seed/admin789/100/100',
 };
-

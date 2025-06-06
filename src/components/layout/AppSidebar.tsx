@@ -16,9 +16,10 @@ import {
   ShieldCheck,
   LayoutDashboard,
   GraduationCap,
-  BarChart, 
+  BarChart2, // Changed from BarChart for consistency
   Settings2, 
-  LibraryBig // Added for Project Repository
+  LibraryBig,
+  UserSearch // Added for Student Lookup
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -42,10 +43,11 @@ const navItems: NavItem[] = [
   { href: '/academics/moocs', label: 'My MOOCs', icon: BookOpen, roles: ['Student'] },
   // Faculty specific
   { href: '/faculty/students', label: 'Student List', icon: Users, roles: ['Faculty'] }, 
+  { href: '/faculty/student-lookup', label: 'Student Lookup', icon: UserSearch, roles: ['Faculty'] },
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
+  { href: '/faculty/class-performance', label: 'Class Performance', icon: BarChart2, roles: ['Faculty'] },
   { href: '/faculty/approvals', label: 'Approvals', icon: CheckSquare, roles: ['Faculty'] },
-  { href: '/faculty/performance-analysis', label: 'Performance Analysis', icon: BarChart, roles: ['Faculty'] },
-  { href: '/faculty/approved-projects', label: 'Project Repository', icon: LibraryBig, roles: ['Faculty'] }, // New Faculty page
+  { href: '/faculty/approved-projects', label: 'Project Repository', icon: LibraryBig, roles: ['Faculty'] },
   // Admin specific
   { href: '/admin/users', label: 'User Management', icon: ShieldCheck, roles: ['Admin'] },
   { href: '/admin/assignments', label: 'Assignments', icon: Settings2, roles: ['Admin'] }, 
@@ -87,4 +89,3 @@ export function AppSidebar() {
     </aside>
   );
 }
-

@@ -5,7 +5,7 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { AppSidebar, type NavItem } from '@/components/layout/AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { GraduationCap, LayoutDashboard, UserCircle, ClipboardList, FileText, BookOpen, Users, Edit3, CheckSquare, ShieldCheck, BarChart, Settings2, LibraryBig } from 'lucide-react';
+import { GraduationCap, LayoutDashboard, UserCircle, ClipboardList, FileText, BookOpen, Users, Edit3, CheckSquare, ShieldCheck, BarChart2, Settings2, LibraryBig, UserSearch } from 'lucide-react'; // Added BarChart2, UserSearch
 import { Skeleton } from '@/components/ui/skeleton';
 
 // Define nav items here so AppHeader can use them for mobile view
@@ -16,9 +16,10 @@ const allNavItems: NavItem[] = [
   { href: '/academics/projects', label: 'My Projects', icon: FileText, roles: ['Student'] },
   { href: '/academics/moocs', label: 'My MOOCs', icon: BookOpen, roles: ['Student'] },
   { href: '/faculty/students', label: 'Students', icon: Users, roles: ['Faculty'] },
+  { href: '/faculty/student-lookup', label: 'Student Lookup', icon: UserSearch, roles: ['Faculty'] },
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
+  { href: '/faculty/class-performance', label: 'Class Performance', icon: BarChart2, roles: ['Faculty'] },
   { href: '/faculty/approvals', label: 'Approvals', icon: CheckSquare, roles: ['Faculty'] },
-  { href: '/faculty/performance-analysis', label: 'Performance Analysis', icon: BarChart, roles: ['Faculty'] },
   { href: '/faculty/approved-projects', label: 'Project Repository', icon: LibraryBig, roles: ['Faculty'] },
   { href: '/admin/users', label: 'User Management', icon: ShieldCheck, roles: ['Admin'] },
   { href: '/admin/assignments', label: 'Assignments', icon: Settings2, roles: ['Admin'] },
@@ -61,4 +62,3 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-

@@ -2,11 +2,13 @@
 'use server';
 
 import { z } from 'zod';
-import type { SubjectMark, StudentProfile, User } from '@/types'; // Added User
+import type { SubjectMark, StudentProfile, User, StudentClassPerformanceDetails } from '@/types'; // Added User
 import { connectToDatabase } from '@/lib/mongodb';
 import { MARKS_COLLECTION, STUDENT_PROFILES_COLLECTION, USERS_COLLECTION } from '@/lib/constants'; // Added USERS_COLLECTION
 import type { Collection, Filter } from 'mongodb';
 import { ObjectId } from 'mongodb';
+import { fetchStudentsForFacultyAction } from './profile-actions'; // For fetching students
+import { ALL_SUBJECTS_BY_SEMESTER } from '@/lib/subjects'; // Assuming subjects are defined here
 
 
 async function getMarksCollection(): Promise<Collection<SubjectMark>> {
@@ -331,4 +333,44 @@ export async function fetchMarksFromStorage(semester: number, section: string, s
 }
 
 
-    
+export async function fetchAllMarksForClassAction(
+  semester: number,
+  section: string,
+  // department?: string // Department filter can be added later if needed for student profiles
+): Promise<StudentClassPerformanceDetails[]> {
+  try {
+    const studentsInClass = await fetchStudentsForFacultyAction('', { year: Math.ceil(semester / 2), section });
+    if (studentsInClass.length === 0) {
+      return [];
+    }
+
+    const studentUserIds = studentsInClass.map(s => s.userId);
+    const subjectsForSemester = ALL_SUBJECTS_BY_SEMESTER[String(semester)] || [];
+    const subjectCodes = subjectsForSemester.map(s => s.code);
+
+    const marksCollection = await getMarksCollection();
+    const marksQuery: Filter<SubjectMark> = {
+      studentId: { $in: studentUserIds },
+      semester: semester,
+      subjectCode: { $in: subjectCodes },
+    };
+    const allMarksForClass = await marksCollection.find(marksQuery).toArray();
+
+    const results: StudentClassPerformanceDetails[] = studentsInClass.map(studentProfile => {
+      const marksBySubject: Record<string, SubjectMark | undefined> = {};
+      subjectsForSemester.forEach(subject => {
+        const mark = allMarksForClass.find(m => m.studentId === studentProfile.userId && m.subjectCode === subject.code);
+        marksBySubject[subject.code] = mark ? { ...mark, _id: String(mark._id), id: String(mark._id) } : undefined;
+      });
+      return {
+        profile: studentProfile,
+        marksBySubject,
+      };
+    });
+    return results;
+
+  } catch (error) {
+    console.error('Error in fetchAllMarksForClassAction:', error);
+    throw new Error('Failed to fetch class marks data.');
+  }
+}
