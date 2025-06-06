@@ -5,19 +5,20 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import type { StudentProfile, SubjectMark } from '@/types';
-import { UserCircle, CalendarDays, Phone, MapPin, Building, Users as UsersIcon, Briefcase, ArrowLeft, ClipboardList, BookOpen, Droplet, Fingerprint, Tag, Flag, Award, Users2, ClipboardCheck, Edit, Save, BarChart2 } from 'lucide-react';
+import { UserCircle, CalendarDays, Phone, MapPin, Building, Users as UsersIcon, Briefcase, ArrowLeft, ClipboardList, BookOpen, Droplet, Fingerprint, Tag, Flag, Award, Users2, ClipboardCheck, BarChart2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
-import { fetchStudentFullProfileDataAction, saveStudentProfileDataAction } from '@/actions/profile-actions';
+import { fetchStudentFullProfileDataAction } from '@/actions/profile-actions';
 import { fetchStudentMarksAction } from '@/actions/student-data-actions';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Input and Select might not be needed if all fields are read-only by faculty
+// import { Input } from '@/components/ui/input';
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Percent } from 'lucide-react';
@@ -33,10 +34,8 @@ export default function FacultyViewStudentDetailedProfilePage() {
   const { toast } = useToast();
 
   const [profile, setProfile] = useState<StudentProfile | null>(null);
-  const [editableProfile, setEditableProfile] = useState<StudentProfile | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  // Removed isEditing, isSaving, editableProfile states as faculty won't edit here
 
   const [selectedMarksSemester, setSelectedMarksSemester] = useState<string>("");
   const [marksForSemester, setMarksForSemester] = useState<SubjectMark[]>([]);
@@ -47,7 +46,6 @@ export default function FacultyViewStudentDetailedProfilePage() {
       setIsLoadingProfile(true);
       fetchStudentFullProfileDataAction(studentId).then(data => {
         setProfile(data);
-        setEditableProfile(data ? { ...data } : null);
         if (data) {
             setSelectedMarksSemester(String(data.currentSemester)); // Default to current semester for marks
         }
@@ -75,47 +73,7 @@ export default function FacultyViewStudentDetailedProfilePage() {
     }
   }, [studentId, selectedMarksSemester, toast]);
 
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setEditableProfile(prev => {
-      if (!prev) return null;
-      const updatedValue = (name === 'year' || name === 'currentSemester') ? parseInt(value) || 1 : value;
-      return { ...prev, [name]: updatedValue };
-    });
-  };
-  
-  const handleSelectChange = (name: string, value: string) => {
-    setEditableProfile(prev => {
-      if (!prev) return null;
-      if (name === 'currentSemester' || name === 'year') {
-        return { ...prev, [name]: parseInt(value) || 1 };
-      }
-      return { ...prev, [name]: value };
-    });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editableProfile) return;
-    setIsSaving(true);
-    try {
-      const success = await saveStudentProfileDataAction(editableProfile);
-      if (success) {
-        setProfile({ ...editableProfile }); 
-        toast({ title: "Profile Updated", description: `${editableProfile.fullName}'s academic details updated.`, className: "bg-success text-success-foreground"});
-        setIsEditing(false);
-      } else {
-        toast({ title: "Update Failed", description: "Could not update student profile.", variant: "destructive" });
-      }
-    } catch (error) {
-      console.error("Error saving student profile:", error);
-      toast({ title: "Save Error", description: (error as Error).message, variant: "destructive" });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
+  // Removed handleInputChange, handleSelectChange, handleSubmit as faculty won't edit here
 
   if (!user || user.role !== 'Faculty') {
     return <p>Access denied. This page is for faculty members only.</p>;
@@ -129,45 +87,40 @@ export default function FacultyViewStudentDetailedProfilePage() {
     return <p>Student profile not found.</p>;
   }
 
-  const facultyEditableFields: string[] = ['department', 'year', 'currentSemester', 'section'];
-
   const profileSections = {
     'Account & Academic': [
-      { name: 'fullName', label: 'Full Name', icon: UserCircle, facultyEditable: false },
-      { name: 'admissionId', label: 'Admission ID (USN)', icon: Briefcase, facultyEditable: false },
-      { name: 'department', label: 'Department', icon: Building, facultyEditable: true, type: 'text', required: true },
-      { name: 'year', label: 'Year of Study', icon: UsersIcon, facultyEditable: true, type: 'number', min: 1, max: 4, required: true },
-      { name: 'currentSemester', label: 'Current Semester', icon: ClipboardCheck, facultyEditable: true, type: 'select', options: Array.from({length: 8}, (_, i) => String(i + 1)), required: true },
-      { name: 'section', label: 'Section', icon: UsersIcon, facultyEditable: true, type: 'text', required: true },
+      { name: 'fullName', label: 'Full Name', icon: UserCircle },
+      { name: 'admissionId', label: 'Admission ID (USN)', icon: Briefcase },
+      { name: 'department', label: 'Department', icon: Building },
+      { name: 'year', label: 'Year of Study', icon: UsersIcon },
+      { name: 'currentSemester', label: 'Current Semester', icon: ClipboardCheck },
+      { name: 'section', label: 'Section', icon: UsersIcon },
     ],
     'Personal Details': [
-      { name: 'dateOfBirth', label: 'Date of Birth', icon: CalendarDays, type: 'date', facultyEditable: false },
-      { name: 'gender', label: 'Gender', icon: Users2, facultyEditable: false },
-      { name: 'bloodGroup', label: 'Blood Group', icon: Droplet, facultyEditable: false },
-      { name: 'aadharNumber', label: 'Aadhar Number', icon: Fingerprint, facultyEditable: false },
-      { name: 'category', label: 'Category', icon: Tag, facultyEditable: false },
-      { name: 'religion', label: 'Religion', icon: BookOpen, facultyEditable: false }, 
-      { name: 'nationality', label: 'Nationality', icon: Flag, facultyEditable: false },
+      { name: 'dateOfBirth', label: 'Date of Birth', icon: CalendarDays, type: 'date' },
+      { name: 'gender', label: 'Gender', icon: Users2 },
+      { name: 'bloodGroup', label: 'Blood Group', icon: Droplet },
+      { name: 'aadharNumber', label: 'Aadhar Number', icon: Fingerprint },
+      { name: 'category', label: 'Category', icon: Tag },
+      { name: 'religion', label: 'Religion', icon: BookOpen }, 
+      { name: 'nationality', label: 'Nationality', icon: Flag },
     ],
     'Contact Information': [
-      { name: 'contactNumber', label: 'Contact Number', icon: Phone, facultyEditable: false },
-      { name: 'address', label: 'Address', icon: MapPin, facultyEditable: false },
+      { name: 'contactNumber', label: 'Contact Number', icon: Phone },
+      { name: 'address', label: 'Address', icon: MapPin },
     ],
     'Guardian Information': [
-      { name: 'fatherName', label: "Father's Name", icon: UserCircle, facultyEditable: false },
-      { name: 'motherName', label: "Mother's Name", icon: UserCircle, facultyEditable: false },
-      { name: 'parentName', label: "Parent's/Guardian's Name (If different)", icon: UserCircle, facultyEditable: false },
-      { name: 'parentContact', label: "Parent's/Guardian's Contact", icon: Phone, facultyEditable: false },
+      { name: 'fatherName', label: "Father's Name", icon: UserCircle },
+      { name: 'motherName', label: "Mother's Name", icon: UserCircle },
+      { name: 'parentName', label: "Parent's/Guardian's Name (If different)", icon: UserCircle },
+      { name: 'parentContact', label: "Parent's/Guardian's Contact", icon: Phone },
     ],
     'Academic History': [
-      { name: 'sslcMarks', label: 'SSLC/10th Marks', icon: Award, facultyEditable: false },
-      { name: 'pucMarks', label: 'PUC/12th Marks', icon: Award, facultyEditable: false },
+      { name: 'sslcMarks', label: 'SSLC/10th Marks', icon: Award },
+      { name: 'pucMarks', label: 'PUC/12th Marks', icon: Award },
     ],
   };
   
-  const sourceProfile = isEditing ? editableProfile : profile;
-
-
   return (
     <div className="space-y-6">
       <Button variant="outline" onClick={() => router.push('/faculty/student-lookup')} className="mb-4">
@@ -175,9 +128,7 @@ export default function FacultyViewStudentDetailedProfilePage() {
       </Button>
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold flex items-center"><UserCircle className="mr-2 h-8 w-8 text-primary" /> Student Details</h1>
-        <Button onClick={() => setIsEditing(!isEditing)} variant={isEditing ? "secondary" : "default"} disabled={isSaving}>
-          {isEditing ? 'Cancel Edit' : <><Edit className="mr-2 h-4 w-4" /> Edit Academic Info</>}
-        </Button>
+        {/* Edit button removed for faculty */}
       </div>
       <Card className="lg:col-span-2 shadow-lg">
         <CardHeader className="flex flex-row items-center space-x-4 bg-muted/30 p-6 rounded-t-lg">
@@ -201,50 +152,17 @@ export default function FacultyViewStudentDetailedProfilePage() {
               <TabsTrigger value="marks" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none">Academic Marks</TabsTrigger>
             </TabsList>
             <TabsContent value="profile" className="p-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-6"> {/* Removed form tag */}
                 {Object.entries(profileSections).map(([sectionTitle, fields]) => (
                   <div key={sectionTitle}>
                     <h3 className="text-xl font-semibold mb-3 text-primary border-b pb-1.5">{sectionTitle}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                       {fields.map(field => {
-                        const canEditThisField = isEditing && field.facultyEditable;
                         return (
                           <div key={field.name} className="space-y-1">
                             <Label htmlFor={field.name} className="flex items-center text-sm font-medium text-muted-foreground">
-                              <field.icon className="mr-2 h-4 w-4" /> {field.label} {field.required && canEditThisField && <span className="text-destructive ml-1">*</span>}
+                              <field.icon className="mr-2 h-4 w-4" /> {field.label}
                             </Label>
-                            {canEditThisField && sourceProfile ? (
-                            field.type === 'select' && field.options ? (
-                                <Select
-                                    name={field.name}
-                                    value={(sourceProfile as any)?.[field.name]?.toString() || ''}
-                                    onValueChange={(value) => handleSelectChange(field.name, value)}
-                                    disabled={isSaving}
-                                >
-                                    <SelectTrigger id={field.name} className="bg-background">
-                                    <SelectValue placeholder={`Select ${field.label}`} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                    {field.options.map(option => (
-                                        <SelectItem key={option} value={option}>{field.name === 'currentSemester' ? `Semester ${option}` : option}</SelectItem>
-                                    ))}
-                                    </SelectContent>
-                                </Select>
-                            ) : (
-                                <Input
-                                    id={field.name}
-                                    name={field.name}
-                                    type={field.type || 'text'}
-                                    value={(sourceProfile as any)?.[field.name] || ''}
-                                    onChange={handleInputChange}
-                                    required={field.required}
-                                    min={(field as any).min}
-                                    max={(field as any).max}
-                                    disabled={isSaving}
-                                    className="bg-background"
-                                />
-                            )
-                            ) : (
                             <p className="text-md p-2 border-b min-h-[40px] bg-muted/20 rounded-sm">
                                 {field.name === 'currentSemester' && (profile as any)[field.name]
                                 ? `Semester ${(profile as any)[field.name]}`
@@ -252,21 +170,14 @@ export default function FacultyViewStudentDetailedProfilePage() {
                                     ? new Date((profile as any)[field.name]).toLocaleDateString() 
                                     : (profile as any)[field.name] || <span className="italic text-muted-foreground/70">N/A</span>}
                             </p>
-                            )}
                           </div>
                         );
                       })}
                     </div>
                   </div>
                 ))}
-                {isEditing && (
-                <div className="flex justify-end pt-4 border-t mt-6">
-                    <Button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/90">
-                    <Save className="mr-2 h-4 w-4" /> {isSaving ? "Saving..." : "Save Academic Details"}
-                    </Button>
-                </div>
-                )}
-              </form>
+                {/* Save button removed as faculty cannot edit */}
+              </div>
             </TabsContent>
             <TabsContent value="marks" className="p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -285,7 +196,7 @@ export default function FacultyViewStudentDetailedProfilePage() {
                 {isLoadingMarks ? (
                      <div className="space-y-4">
                         {[...Array(4)].map((_, i) => (
-                            <div key={i} className="flex items-center space-x-4 p-2 border-b">
+                            <div key={`marks-skel-${i}`} className="flex items-center space-x-4 p-2 border-b">
                             <Skeleton className="h-8 w-1/4" /> <Skeleton className="h-8 w-1/6" /> 
                             <Skeleton className="h-8 w-1/6" /> <Skeleton className="h-8 w-1/6" /> 
                             <Skeleton className="h-8 w-1/6" /> <Skeleton className="h-8 w-1/6" />
@@ -336,7 +247,7 @@ const ProfilePageSkeleton = () => (
     <Skeleton className="h-10 w-40 mb-4" /> {/* Back button skeleton */}
     <div className="flex items-center justify-between">
         <Skeleton className="h-10 w-64" /> {/* Title skeleton */}
-        <Skeleton className="h-10 w-32" /> {/* Edit button skeleton */}
+        {/* Edit button skeleton removed */}
     </div>
     <Card className="lg:col-span-2 shadow-lg">
         <CardHeader className="flex flex-row items-center space-x-4 bg-muted/30 p-6 rounded-t-lg">
@@ -349,7 +260,7 @@ const ProfilePageSkeleton = () => (
         <CardContent className="p-0">
              <Skeleton className="h-10 w-full rounded-none" /> {/* TabsList Skeleton */}
              <div className="p-6 space-y-6">
-                {[...Array(3)].map((_, sectionIndex) => (
+                {[...Array(3)].map((_, sectionIndex) => ( // Changed s to _
                     <div key={`section-skel-${sectionIndex}`}>
                         <Skeleton className="h-6 w-1/3 mb-3" /> {/* Section Title */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
@@ -367,4 +278,4 @@ const ProfilePageSkeleton = () => (
     </Card>
   </div>
 );
-
+    
