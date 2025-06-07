@@ -4,16 +4,15 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import type { StudentProfile, SubjectMark, MoocCourse, MiniProject, SubmissionStatus } from '@/types';
+import type { StudentProfile, SubjectMark } from '@/types';
 import { UserCircle, CalendarDays, Phone, MapPin, Building, Users as UsersIcon, Briefcase, ArrowLeft, ClipboardList, BookOpen, Droplet, Fingerprint, Tag, Flag, Award, Users2, ClipboardCheck, BarChart2, FileText as FileTextIcon, Download } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { fetchStudentFullProfileDataAction } from '@/actions/profile-actions';
 import { fetchStudentMarksAction } from '@/actions/student-data-actions';
-import { fetchStudentMoocsAction, fetchStudentProjectsAction } from '@/actions/academic-submission-actions';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
@@ -41,16 +40,6 @@ export default function FacultyViewStudentDetailedProfilePage() {
   const [marksForSemester, setMarksForSemester] = useState<SubjectMark[]>([]);
   const [isLoadingMarks, setIsLoadingMarks] = useState(false);
 
-  const [allMoocs, setAllMoocs] = useState<MoocCourse[]>([]);
-  const [filteredMoocs, setFilteredMoocs] = useState<MoocCourse[]>([]);
-  const [selectedMoocSemester, setSelectedMoocSemester] = useState<string>("");
-  const [isLoadingMoocs, setIsLoadingMoocs] = useState(false);
-
-  const [allProjects, setAllProjects] = useState<MiniProject[]>([]);
-  const [filteredProjects, setFilteredProjects] = useState<MiniProject[]>([]);
-  const [selectedProjectSemester, setSelectedProjectSemester] = useState<string>("");
-  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
-
 
   useEffect(() => {
     if (user && user.role === 'Faculty' && studentUserId) {
@@ -60,8 +49,6 @@ export default function FacultyViewStudentDetailedProfilePage() {
         if (data) {
             const currentSemStr = String(data.currentSemester);
             setSelectedMarksSemester(currentSemStr); 
-            setSelectedMoocSemester(currentSemStr);
-            setSelectedProjectSemester(currentSemStr);
         }
         setIsLoadingProfile(false);
       }).catch(err => {
@@ -69,20 +56,6 @@ export default function FacultyViewStudentDetailedProfilePage() {
         toast({title: "Error", description: "Could not load student profile.", variant: "destructive"});
         setIsLoadingProfile(false);
       });
-
-      // Fetch all MOOCs and Projects for the student
-      setIsLoadingMoocs(true);
-      fetchStudentMoocsAction(studentUserId)
-        .then(setAllMoocs)
-        .catch(err => toast({title: "Error", description: "Could not load student MOOCs.", variant: "destructive"}))
-        .finally(() => setIsLoadingMoocs(false));
-      
-      setIsLoadingProjects(true);
-      fetchStudentProjectsAction(studentUserId)
-        .then(setAllProjects)
-        .catch(err => toast({title: "Error", description: "Could not load student projects.", variant: "destructive"}))
-        .finally(() => setIsLoadingProjects(false));
-
     } else {
       setIsLoadingProfile(false); 
     }
@@ -100,47 +73,6 @@ export default function FacultyViewStudentDetailedProfilePage() {
             .finally(() => setIsLoadingMarks(false));
     }
   }, [studentUserId, selectedMarksSemester, toast]);
-
-  useEffect(() => {
-    if (selectedMoocSemester) {
-      setFilteredMoocs(allMoocs.filter(mooc => mooc.submissionSemester === parseInt(selectedMoocSemester)));
-    } else {
-      setFilteredMoocs(allMoocs); // Or an empty array if no semester selected means show nothing initially
-    }
-  }, [allMoocs, selectedMoocSemester]);
-
-  useEffect(() => {
-    if (selectedProjectSemester) {
-      setFilteredProjects(allProjects.filter(project => project.submissionSemester === parseInt(selectedProjectSemester)));
-    } else {
-      setFilteredProjects(allProjects); // Or an empty array
-    }
-  }, [allProjects, selectedProjectSemester]);
-
-  const StatusBadge = ({ status }: { status: SubmissionStatus }) => {
-    let IconComponent = CalendarDays; // Default
-    let variant: "default" | "secondary" | "destructive" | "outline" = "default";
-    let className = "";
-
-    if (status === 'Approved') {
-      IconComponent = CheckCircle;
-      variant = "default";
-      className = "bg-success text-success-foreground hover:bg-success/90";
-    } else if (status === 'Rejected') {
-      IconComponent = XCircle;
-      variant = "destructive";
-    } else { // Pending
-      IconComponent = Clock;
-      variant = "default";
-      className = "bg-warning text-warning-foreground hover:bg-warning/90";
-    }
-    return (
-      <Badge variant={variant} className={className}>
-        <IconComponent className="mr-1 h-3 w-3" />
-        {status}
-      </Badge>
-    );
-  };
 
 
   if (!user || user.role !== 'Faculty') {
@@ -214,11 +146,9 @@ export default function FacultyViewStudentDetailedProfilePage() {
         </CardHeader>
         <CardContent className="p-0">
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 rounded-none">
+            <TabsList className="grid w-full grid-cols-2 rounded-none"> {/* Changed to grid-cols-2 */}
               <TabsTrigger value="profile" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none">Profile</TabsTrigger>
               <TabsTrigger value="marks" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none">Marks</TabsTrigger>
-              <TabsTrigger value="moocs" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none">MOOCs</TabsTrigger>
-              <TabsTrigger value="projects" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none">Mini-Projects</TabsTrigger>
             </TabsList>
             <TabsContent value="profile" className="p-6">
               <div className="space-y-6">
@@ -303,72 +233,6 @@ export default function FacultyViewStudentDetailedProfilePage() {
                     </div>
                 )}
             </TabsContent>
-             <TabsContent value="moocs" className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-semibold text-primary">MOOC Submissions - Semester {selectedMoocSemester}</h3>
-                    <div className="w-48">
-                        <Select value={selectedMoocSemester} onValueChange={setSelectedMoocSemester}>
-                            <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
-                            <SelectContent>{SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}</SelectContent>
-                        </Select>
-                    </div>
-                </div>
-                {isLoadingMoocs ? <Skeleton className="h-32 w-full" /> : filteredMoocs.length > 0 ? (
-                    <div className="space-y-3">
-                        {filteredMoocs.map(mooc => (
-                            <Card key={mooc.id} className="bg-muted/50">
-                                <CardHeader className="pb-2 flex flex-row justify-between items-start">
-                                    <div>
-                                        <CardTitle className="text-md">{mooc.courseName}</CardTitle>
-                                        <CardDescription>{mooc.platform} | {format(new Date(mooc.startDate), "PP")} - {format(new Date(mooc.endDate), "PP")}</CardDescription>
-                                    </div>
-                                    <StatusBadge status={mooc.status}/>
-                                </CardHeader>
-                                <CardContent className="text-sm">
-                                    <p>Credits: {mooc.creditsEarned ?? 'N/A'}</p>
-                                    {mooc.certificateUrl && <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline"><a href={mooc.certificateUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-1 h-3 w-3"/>View Certificate</a></Button>}
-                                    {mooc.remarks && <p className="mt-1 text-xs">Faculty Remarks: {mooc.remarks}</p>}
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                ) : <p className="text-center py-4 text-muted-foreground">No MOOCs submitted for Semester {selectedMoocSemester}.</p>}
-            </TabsContent>
-            <TabsContent value="projects" className="p-6">
-                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-semibold text-primary">Mini-Project Submissions - Semester {selectedProjectSemester}</h3>
-                    <div className="w-48">
-                        <Select value={selectedProjectSemester} onValueChange={setSelectedProjectSemester}>
-                            <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
-                            <SelectContent>{SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}</SelectContent>
-                        </Select>
-                    </div>
-                </div>
-                {isLoadingProjects ? <Skeleton className="h-40 w-full" /> : filteredProjects.length > 0 ? (
-                     <div className="space-y-3">
-                        {filteredProjects.map(project => (
-                            <Card key={project.id} className="bg-muted/50">
-                                 <CardHeader className="pb-2 flex flex-row justify-between items-start">
-                                    <div>
-                                        <CardTitle className="text-md">{project.title}</CardTitle>
-                                        <CardDescription>Subject: {project.subject} | Submitted: {format(new Date(project.submittedDate), "PP")}</CardDescription>
-                                    </div>
-                                     <StatusBadge status={project.status}/>
-                                </CardHeader>
-                                <CardContent className="text-sm">
-                                    <p className="text-xs text-muted-foreground mb-1 line-clamp-2">Desc: {project.description}</p>
-                                    {project.guideId && <p className="text-xs">Guide ID: {project.guideId}</p>}
-                                    <div className="mt-1 space-x-2">
-                                    {project.pptUrl && <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline"><a href={project.pptUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-1 h-3 w-3"/>View PPT</a></Button>}
-                                    {project.reportUrl && <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline"><a href={project.reportUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-1 h-3 w-3"/>View Report</a></Button>}
-                                    </div>
-                                     {project.remarks && <p className="mt-1 text-xs">Faculty Remarks: {project.remarks}</p>}
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
-                ) : <p className="text-center py-4 text-muted-foreground">No mini-projects submitted for Semester {selectedProjectSemester}.</p>}
-            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
@@ -414,3 +278,4 @@ const ProfilePageSkeleton = () => (
     
 
     
+
