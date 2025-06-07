@@ -62,5 +62,14 @@ export const ALL_SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: stri
   ],
 };
 
-export const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical", "Information Science"];
+export const DEPARTMENTS = [
+  "Computer Science & Engineering",
+  "Computer Science & Engineering (AI and ML)",
+  "Computer Science & Engineering (Data Science)",
+  "Artificial Intelligence and Machine Learning",
+  "Artificial Intelligence and Data Science",
+  "Information Science & Engineering",
+  "Electronics & Communication Engineering"
+];
+
 
