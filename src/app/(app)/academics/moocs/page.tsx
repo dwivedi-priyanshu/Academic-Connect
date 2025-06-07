@@ -94,7 +94,10 @@ export default function MoocsPage() {
     e.preventDefault();
     if (!user || !studentCurrentSemester) return;
 
-    if (parseInt(selectedSemesterView) !== studentCurrentSemester && (!currentMooc.id || currentMooc.id === 'new')) {
+    const isCurrentSemesterViewSelected = parseInt(selectedSemesterView) === studentCurrentSemester;
+    const isNewSubmission = !currentMooc.id || currentMooc.id === 'new';
+
+    if (isNewSubmission && !isCurrentSemesterViewSelected) {
         toast({ title: "Action Denied", description: "You can only add MOOCs for your current semester.", variant: "destructive"});
         return;
     }
@@ -121,7 +124,7 @@ export default function MoocsPage() {
 
       if (savedMooc.submissionSemester === parseInt(selectedSemesterView)) {
         setMoocs(prev => {
-          if (currentMooc.id === 'new' || !currentMooc.id) {
+          if (isNewSubmission) {
               return [...prev, savedMooc];
           }
           return prev.map(m => m.id === savedMooc.id ? savedMooc : m);
@@ -130,7 +133,7 @@ export default function MoocsPage() {
         toast({title: "Submission Recorded", description: `"${savedMooc.courseName}" was submitted for Semester ${savedMooc.submissionSemester}. You are currently viewing Semester ${selectedSemesterView}.`});
       }
 
-      toast({ title: currentMooc.id && currentMooc.id !== 'new' ? "MOOC Updated" : "MOOC Submitted", description: `"${savedMooc.courseName}" has been ${currentMooc.id && currentMooc.id !== 'new' ? 'updated' : 'submitted'}.`, className: "bg-success text-success-foreground" });
+      toast({ title: isNewSubmission ? "MOOC Submitted" : "MOOC Updated", description: `"${savedMooc.courseName}" has been ${isNewSubmission ? 'submitted' : 'updated'}.`, className: "bg-success text-success-foreground" });
 
       setCurrentMooc({ ...initialMoocState, studentId: user.id });
       setCertificateFile(null);
@@ -144,13 +147,15 @@ export default function MoocsPage() {
   };
 
   const handleEdit = (mooc: MoocCourse) => {
-    if (!studentCurrentSemester || mooc.submissionSemester !== studentCurrentSemester) {
-        toast({ title: "Action Denied", description: "You can only edit MOOCs from your current semester.", variant: "default"});
-        // Allow viewing
+    const isCurrentSemSubmission = studentCurrentSemester !== null && mooc.submissionSemester === studentCurrentSemester;
+    if (mooc.status === 'Approved' && isCurrentSemSubmission) {
+        toast({ title: "Notice", description: "This MOOC is approved. You can update the certificate.", variant: "default"});
+    } else if (mooc.status === 'Approved') { // Approved but not current semester
+        toast({ title: "Notice", description: "This MOOC is approved (read-only for past/future semesters).", variant: "default"});
+    } else if (!isCurrentSemSubmission) {
+        toast({ title: "Notice", description: "Viewing MOOC from a past/future semester (read-only).", variant: "default"});
     }
-    if (mooc.status === 'Approved' && mooc.submissionSemester === studentCurrentSemester) {
-        toast({ title: "Notice", description: "Approved MOOCs can only be viewed. No edits allowed.", variant: "default"});
-    }
+
     setCurrentMooc({
       ...mooc,
       startDate: mooc.startDate ? format(new Date(mooc.startDate), 'yyyy-MM-dd') : '',
@@ -182,7 +187,8 @@ export default function MoocsPage() {
   };
 
   const toggleFormVisibility = () => {
-    if (!isFormVisible && (!studentCurrentSemester || parseInt(selectedSemesterView) !== studentCurrentSemester)) {
+    const isCurrentSemesterViewSelected = studentCurrentSemester !== null && parseInt(selectedSemesterView) === studentCurrentSemester;
+    if (!isFormVisible && !isCurrentSemesterViewSelected) {
         toast({ title: "Action Denied", description: "You can only add new MOOCs for your current semester. Please select your current semester to add a MOOC.", variant: "default"});
         return;
     }
@@ -222,11 +228,46 @@ export default function MoocsPage() {
     return <p>This page is for students to manage their MOOC submissions.</p>;
   }
 
-  const canInteractWithFormForCurrentSemester = studentCurrentSemester !== null && parseInt(selectedSemesterView) === studentCurrentSemester;
+  const isCurrentSemesterViewSelected = studentCurrentSemester !== null && parseInt(selectedSemesterView) === studentCurrentSemester;
   const isNewMooc = !currentMooc.id || currentMooc.id === 'new';
-  const isApprovedMoocInForm = currentMooc.status === 'Approved';
-  const formIsReadOnly = isFormVisible && (!canInteractWithFormForCurrentSemester || (isApprovedMoocInForm && canInteractWithFormForCurrentSemester));
+  
+  // Determine if details fields should be disabled
+  const detailsFieldsDisabled = isSubmitting || (
+    !isNewMooc && // For existing MOOCs
+    (currentMooc.status === 'Approved' || !isCurrentSemesterViewSelected) // Disable if approved OR not current semester
+  );
 
+  // Determine if certificate upload should be disabled
+  const certificateUploadDisabled = isSubmitting || (
+    !isNewMooc && !isCurrentSemesterViewSelected // Disable for existing MOOCs not in current semester
+  );
+  
+  // Submit button text and disabled state
+  let submitButtonText = isNewMooc ? 'Submit MOOC' : 'Update MOOC';
+  if (currentMooc.status === 'Approved' && isCurrentSemesterViewSelected && !isNewMooc) {
+    submitButtonText = 'Save Certificate';
+  }
+
+  let formTitle = isNewMooc ? 'Submit New MOOC' : 'Edit MOOC Details';
+  let formDescription = "Fill in the details of your MOOC.";
+
+  if (!isNewMooc) {
+    if (currentMooc.status === 'Approved' && isCurrentSemesterViewSelected) {
+      formTitle = 'Upload/Update MOOC Certificate';
+      formDescription = 'This MOOC is approved. You can upload or update your certificate here.';
+    } else if (currentMooc.status === 'Approved' && !isCurrentSemesterViewSelected) {
+      formTitle = 'View Approved MOOC';
+      formDescription = 'This MOOC is approved (details are read-only).';
+    } else if (!isCurrentSemesterViewSelected) {
+      formTitle = 'View MOOC Details';
+      formDescription = 'Viewing MOOC from a past/future semester (details are read-only).';
+    }
+  }
+
+  const formSubmitDisabled = isSubmitting || 
+    (isNewMooc && !isCurrentSemesterViewSelected) || // Can't submit NEW if not current sem
+    (!isNewMooc && !isCurrentSemesterViewSelected && currentMooc.status !== 'Approved') || // Can't edit existing (non-approved) if not current sem
+    (!isNewMooc && currentMooc.status === 'Approved' && !isCurrentSemesterViewSelected); // Can't update cert for approved if not current sem
 
   return (
     <div className="space-y-6">
@@ -245,7 +286,7 @@ export default function MoocsPage() {
                     </SelectContent>
                 </Select>
             </div>
-            <Button onClick={toggleFormVisibility} disabled={isSubmitting || isLoading || (!canInteractWithFormForCurrentSemester && !isFormVisible) }>
+            <Button onClick={toggleFormVisibility} disabled={isSubmitting || isLoading || (!isCurrentSemesterViewSelected && !isFormVisible) }>
               <PlusCircle className="mr-2 h-4 w-4" /> {isFormVisible ? 'Close Form' : 'Add New MOOC'}
             </Button>
         </div>
@@ -254,10 +295,10 @@ export default function MoocsPage() {
       {isFormVisible && (
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle>{isNewMooc ? 'Submit New MOOC' : (formIsReadOnly ? 'View MOOC Details' : 'Edit MOOC')}</CardTitle>
+            <CardTitle>{formTitle}</CardTitle>
             <CardDescription>
-                {formIsReadOnly ? "Viewing MOOC details. Editing is disabled for approved or past semester MOOCs." : "Fill in the details of your MOOC."}
-                 {!canInteractWithFormForCurrentSemester && isNewMooc && <span className="block text-destructive text-sm mt-1">You must select your current semester to add a new MOOC.</span>}
+                {formDescription}
+                 {!isCurrentSemesterViewSelected && isNewMooc && <span className="block text-destructive text-sm mt-1">You must select your current semester to add a new MOOC.</span>}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -265,27 +306,27 @@ export default function MoocsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label htmlFor="courseName">Course Name</Label>
-                  <Input id="courseName" name="courseName" value={currentMooc.courseName} onChange={handleInputChange} required className="bg-background" disabled={formIsReadOnly || isSubmitting}/>
+                  <Input id="courseName" name="courseName" value={currentMooc.courseName} onChange={handleInputChange} required className="bg-background" disabled={detailsFieldsDisabled}/>
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="platform">Platform (e.g., Coursera, NPTEL)</Label>
-                  <Input id="platform" name="platform" value={currentMooc.platform} onChange={handleInputChange} required className="bg-background" disabled={formIsReadOnly || isSubmitting}/>
+                  <Input id="platform" name="platform" value={currentMooc.platform} onChange={handleInputChange} required className="bg-background" disabled={detailsFieldsDisabled}/>
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label htmlFor="startDate">Start Date</Label>
-                  <Input id="startDate" name="startDate" type="date" value={currentMooc.startDate} onChange={handleInputChange} required className="bg-background" disabled={formIsReadOnly || isSubmitting}/>
+                  <Input id="startDate" name="startDate" type="date" value={currentMooc.startDate} onChange={handleInputChange} required className="bg-background" disabled={detailsFieldsDisabled}/>
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="endDate">End Date</Label>
-                  <Input id="endDate" name="endDate" type="date" value={currentMooc.endDate} onChange={handleInputChange} required className="bg-background" disabled={formIsReadOnly || isSubmitting}/>
+                  <Input id="endDate" name="endDate" type="date" value={currentMooc.endDate} onChange={handleInputChange} required className="bg-background" disabled={detailsFieldsDisabled}/>
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label htmlFor="creditsEarned">Credits Earned (Optional)</Label>
-                  <Input id="creditsEarned" name="creditsEarned" type="number" value={currentMooc.creditsEarned ?? ''} onChange={handleInputChange} className="bg-background" disabled={formIsReadOnly || isSubmitting}/>
+                  <Input id="creditsEarned" name="creditsEarned" type="number" value={currentMooc.creditsEarned ?? ''} onChange={handleInputChange} className="bg-background" disabled={detailsFieldsDisabled}/>
                 </div>
                  <FileUploadInput
                   id="certificateFile"
@@ -293,13 +334,13 @@ export default function MoocsPage() {
                   onFileChange={setCertificateFile}
                   accept=".pdf"
                   currentFile={currentMooc.certificateUrl}
-                  disabled={formIsReadOnly || isSubmitting}
+                  disabled={certificateUploadDisabled}
                 />
               </div>
-              {!formIsReadOnly && (
-                  <Button type="submit" disabled={isSubmitting} className="w-full md:w-auto">
-                    <UploadCloud className="mr-2 h-4 w-4" /> {isSubmitting ? 'Submitting...' : (isNewMooc ? 'Submit MOOC' : 'Update MOOC')}
-                  </Button>
+              {!((!isNewMooc && !isCurrentSemesterViewSelected && currentMooc.status !== 'Approved') || (!isNewMooc && currentMooc.status === 'Approved' && !isCurrentSemesterViewSelected)) && (
+                <Button type="submit" disabled={formSubmitDisabled} className="w-full md:w-auto">
+                    <UploadCloud className="mr-2 h-4 w-4" /> {isSubmitting ? 'Processing...' : submitButtonText}
+                </Button>
               )}
             </form>
           </CardContent>
@@ -322,8 +363,15 @@ export default function MoocsPage() {
             <div className="space-y-4">
               {moocs.map(mooc => {
                 const isCurrentSemSubmission = studentCurrentSemester !== null && mooc.submissionSemester === studentCurrentSemester;
-                const canEdit = isCurrentSemSubmission && mooc.status !== 'Approved';
-                const canDelete = isCurrentSemSubmission && (mooc.status === 'Pending' || mooc.status === 'Rejected');
+                const canEditThisMooc = isCurrentSemSubmission; // Simplified: can always "edit" current sem MOOCs to open form
+                const canDeleteThisMooc = isCurrentSemSubmission && (mooc.status === 'Pending' || mooc.status === 'Rejected');
+                let editButtonText = "Edit Details";
+                if (mooc.status === 'Approved' && isCurrentSemSubmission) {
+                    editButtonText = "Update Certificate";
+                } else if (!isCurrentSemSubmission) {
+                    editButtonText = "View Details";
+                }
+
 
                 return (
                     <Card key={mooc.id} className="bg-background hover:shadow-md transition-shadow">
@@ -345,26 +393,23 @@ export default function MoocsPage() {
                         {mooc.remarks && (mooc.status === 'Rejected' || mooc.status === 'Approved') && <p className={mooc.status === 'Rejected' ? "text-destructive" : "text-muted-foreground"}><strong>Faculty Remarks:</strong> {mooc.remarks}</p>}
                     </CardContent>
                     <CardFooter className="flex justify-end gap-2 pt-0 pb-3 px-6">
-                        {canEdit && (
+                        {isCurrentSemSubmission || mooc.status === 'Approved' ? ( // Allow viewing/editing for current sem or if approved (to view)
                         <Button variant="outline" size="sm" onClick={() => handleEdit(mooc)} disabled={isSubmitting || isLoading}>
-                            <Edit2 className="mr-1 h-3 w-3" /> Edit
+                            {mooc.status === 'Approved' && isCurrentSemSubmission ? <UploadCloud className="mr-1 h-3 w-3" /> : (isCurrentSemSubmission ? <Edit2 className="mr-1 h-3 w-3" /> : <CalendarDays className="mr-1 h-3 w-3" />)} 
+                            {editButtonText}
                         </Button>
-                        )}
-                         {mooc.submissionSemester !== studentCurrentSemester && (
-                            <Button variant="outline" size="sm" onClick={() => handleEdit(mooc)} disabled={isSubmitting || isLoading}>
+                        ) : (
+                             <Button variant="outline" size="sm" onClick={() => handleEdit(mooc)} disabled={isSubmitting || isLoading}>
                                 <CalendarDays className="mr-1 h-3 w-3" /> View Details
                             </Button>
-                         )}
-                        {canDelete && (
+                        )}
+                        {canDeleteThisMooc && (
                         <Button variant="destructive" size="sm" onClick={() => handleDelete(mooc)} disabled={isSubmitting || isLoading}>
                             <Trash2 className="mr-1 h-3 w-3" /> Delete
                         </Button>
                         )}
-                         {(!canEdit && !canDelete && !isCurrentSemSubmission && mooc.status !== 'Approved' && mooc.submissionSemester !== studentCurrentSemester) && (
+                         {(!isCurrentSemSubmission && mooc.status !== 'Approved') && (
                             <p className="text-xs text-muted-foreground">Actions locked for past semester submissions.</p>
-                         )}
-                          {(!canEdit && !canDelete && isCurrentSemSubmission && mooc.status === 'Approved') && (
-                            <p className="text-xs text-muted-foreground">This MOOC is approved (read-only).</p>
                          )}
                     </CardFooter>
                     </Card>
@@ -374,7 +419,7 @@ export default function MoocsPage() {
           ) : (
             <p className="text-muted-foreground text-center py-4 flex items-center justify-center gap-2">
                 <CalendarDays className="h-5 w-5" /> No MOOCs submitted for Semester {selectedSemesterView === 'loading-placeholder' ? 'N/A' : selectedSemesterView}.
-                {studentCurrentSemester !== null && parseInt(selectedSemesterView) === studentCurrentSemester &&
+                {isCurrentSemesterViewSelected &&
                     <Button size="sm" variant="outline" onClick={toggleFormVisibility} disabled={isLoading || isSubmitting}>Add New MOOC</Button>
                 }
             </p>
