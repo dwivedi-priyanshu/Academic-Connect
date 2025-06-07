@@ -12,10 +12,17 @@ cloudinary.config({
 
 export async function uploadStreamToCloudinary(
   fileBuffer: Buffer,
-  folderPath: string, // Renamed to folderPath for clarity
-  fileName: string, // This is the safeFileName (e.g., "report.pdf" or "image.png")
+  folderPath: string, 
+  fileName: string, 
   resourceType: 'image' | 'raw' | 'video' | 'auto' = 'auto'
 ): Promise<string> {
+  console.log(`[CloudinaryUpload] Initiating upload for: ${folderPath}/${fileName}, resourceType: ${resourceType}, bufferLength: ${fileBuffer.length}`);
+
+  if (fileBuffer.length === 0) {
+    console.error('[CloudinaryUpload] Error: File buffer is empty. Aborting upload.');
+    return Promise.reject(new Error('File buffer is empty. Cannot upload.'));
+  }
+
   return new Promise((resolve, reject) => {
     let uploadOptions: cloudinary.UploadApiOptions;
 
@@ -24,43 +31,47 @@ export async function uploadStreamToCloudinary(
     const extension = dotIndex !== -1 ? fileName.substring(dotIndex + 1).toLowerCase() : '';
 
     if (resourceType === 'raw') {
-      // For 'raw' files, combine folderPath and fileName into the public_id.
-      // Do not use the 'folder' option separately for raw uploads with a full path in public_id.
       uploadOptions = {
         resource_type: 'raw',
         overwrite: true,
-        public_id: `${folderPath}/${fileName}`, // e.g., "mooc_certificates/student123/mydoc.pdf"
+        invalidate: true, // Added invalidate
+        public_id: `${folderPath}/${fileName}`, // fileName includes extension for raw files
       };
     } else {
-      // For 'image', 'video', 'auto' resource types
       uploadOptions = {
         resource_type: resourceType,
-        folder: folderPath, // Use folder option here
+        folder: folderPath,
         overwrite: true,
-        public_id: baseName, // e.g., "my_image" (without extension)
+        invalidate: true, // Added invalidate
+        public_id: baseName, // baseName does NOT include extension for image/video/auto
       };
       if (extension) {
-        uploadOptions.format = extension; // e.g., "png"
+        uploadOptions.format = extension; 
       }
     }
     
-    const finalPublicIdForLog = uploadOptions.public_id;
-    const finalFolderForLog = uploadOptions.folder; // This will be undefined for raw uploads now
-    const finalFormatForLog = uploadOptions.format;
+    console.log('[CloudinaryUpload] Upload options being used:', JSON.stringify(uploadOptions, null, 2));
 
     const uploadStream = cloudinary.uploader.upload_stream(
       uploadOptions,
       (error, result) => {
         if (error) {
-          console.error('Cloudinary Upload Error:', error);
-          console.error('Upload Options used:', { folder: finalFolderForLog, public_id: finalPublicIdForLog, resource_type: uploadOptions.resource_type, format: finalFormatForLog });
+          console.error('[CloudinaryUpload] Upload Error from Cloudinary:', JSON.stringify(error, null, 2));
           reject(error);
         } else if (result) {
+          console.log('[CloudinaryUpload] Upload Success. Result from Cloudinary:');
+          console.log(`  - Public ID: ${result.public_id}`);
+          console.log(`  - Resource Type: ${result.resource_type}`);
+          console.log(`  - Format: ${result.format}`);
+          console.log(`  - Bytes: ${result.bytes}`);
+          console.log(`  - Secure URL: ${result.secure_url}`);
+          
           if (resourceType === 'raw' && result.resource_type !== 'raw') {
-            console.warn(`Cloudinary Warning: Expected 'raw' resource_type, but received '${result.resource_type}'. URL: ${result.secure_url}`);
+            console.warn(`[CloudinaryUpload] Warning: Expected 'raw' resource_type, but Cloudinary reports '${result.resource_type}'. URL: ${result.secure_url}`);
           }
           resolve(result.secure_url);
         } else {
+          console.error('[CloudinaryUpload] Upload failed without specific error object from Cloudinary.');
           reject(new Error('Cloudinary upload failed without error object'));
         }
       }
