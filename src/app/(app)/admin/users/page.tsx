@@ -3,7 +3,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass, KeyRound, Edit, Save, UserCog, School } from 'lucide-react'; // Added UserCog, School
+import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass, KeyRound, Edit, Save, UserCog, School } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { User, UserStatus, StudentProfile, UserRole } from '@/types'; 
@@ -18,10 +18,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DEPARTMENTS } from '@/lib/subjects'; // Ensure DEPARTMENTS is imported
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
-const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical", "Information Science", "Biotechnology", "Aerospace", "Computer Science & Engineering", "Computer Science & Engineering (AI and ML)", "Computer Science & Engineering (Data Science)", "Artificial Intelligence and Machine Learning", "Artificial Intelligence and Data Science", "Information Science & Engineering", "Electronics & Communication Engineering"];
+// DEPARTMENTS is already imported, it was defined above in the file
 
 
 export default function AdminUsersPage() {
@@ -30,7 +31,7 @@ export default function AdminUsersPage() {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  const [activeMainTab, setActiveMainTab] = useState<UserRole | 'all'>('Student'); // Default to Student
+  const [activeMainTab, setActiveMainTab] = useState<UserRole | 'all'>('Student');
   const [activeStatusTab, setActiveStatusTab] = useState<UserStatus | 'all'>('all');
 
   const [isUsnModalOpen, setIsUsnModalOpen] = useState(false);
@@ -46,7 +47,6 @@ export default function AdminUsersPage() {
   const loadUsers = useCallback(() => {
     if (user && user.role === 'Admin') {
         setIsLoading(true);
-        // Fetch all users based on status filter, then client-side filter by role
         const statusFilters = activeStatusTab && activeStatusTab !== 'all' ? { status: activeStatusTab } : {};
         fetchAllUsersAction(statusFilters).then(data => {
             setAllUsers(data);
@@ -64,16 +64,9 @@ export default function AdminUsersPage() {
   }, [activeStatusTab, loadUsers]); 
 
   const displayedUsers = useMemo(() => {
-    if (activeMainTab === 'all') return allUsers; // Should not happen with new tab structure
+    if (activeMainTab === 'all') return allUsers; 
     return allUsers.filter(u => u.role === activeMainTab);
   }, [allUsers, activeMainTab]);
-
-  const getStatusCount = (status: UserStatus) => {
-    return allUsers.filter(u => u.role === activeMainTab && u.status === status).length;
-  };
-  const getTotalCountForRole = () => {
-    return allUsers.filter(u => u.role === activeMainTab).length;
-  }
 
 
   const handleOpenUsnModal = (userToApprove: User) => {
