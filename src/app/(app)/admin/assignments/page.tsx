@@ -258,7 +258,7 @@ export default function AdminAssignmentsPage() {
               {isLoadingFaculty ? <FormSkeleton /> : (
                 <form onSubmit={handleAddSubjectAssignment} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                    <div>
+                    <div className="space-y-1">
                       <Label htmlFor="facultySub">Faculty</Label>
                       <Select value={selectedFacultySub} onValueChange={setSelectedFacultySub} required>
                         <SelectTrigger id="facultySub"><SelectValue placeholder="Select Faculty" /></SelectTrigger>
@@ -267,7 +267,7 @@ export default function AdminAssignmentsPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
+                    <div className="space-y-1">
                       <Label htmlFor="departmentSub" className="flex items-center"><Building className="mr-1 h-3 w-3 text-muted-foreground"/>Department</Label>
                       <Select value={selectedDepartmentSub} onValueChange={v => {setSelectedDepartmentSub(v); setSelectedSemesterSub(''); setSelectedSubjectInfo(null);}} required>
                         <SelectTrigger id="departmentSub"><SelectValue placeholder="Select Department" /></SelectTrigger>
@@ -276,14 +276,14 @@ export default function AdminAssignmentsPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
+                    <div className="space-y-1">
                       <Label htmlFor="semesterSub">Semester</Label>
                       <Select value={selectedSemesterSub} onValueChange={v => {setSelectedSemesterSub(v); setSelectedSubjectInfo(null);}} required disabled={!selectedDepartmentSub}>
                         <SelectTrigger id="semesterSub"><SelectValue placeholder="Select Semester" /></SelectTrigger>
                         <SelectContent>{SEMESTERS.map(s => <SelectItem key={s} value={s}>Sem {s}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
-                     <div>
+                     <div className="space-y-1">
                       <Label htmlFor="subjectSub">Subject</Label>
                       <Select 
                         value={selectedSubjectInfo?.code || ''} 
@@ -305,7 +305,7 @@ export default function AdminAssignmentsPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
+                    <div className="space-y-1">
                       <Label htmlFor="sectionSub">Section</Label>
                       <Select value={selectedSectionSub} onValueChange={setSelectedSectionSub} required disabled={!selectedSemesterSub}>
                         <SelectTrigger id="sectionSub"><SelectValue placeholder="Select Section" /></SelectTrigger>
@@ -357,14 +357,14 @@ export default function AdminAssignmentsPage() {
               {isLoadingFaculty ? <FormSkeleton /> : (
                  <form onSubmit={handleAssignMoocCoordinator} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
+                        <div className="space-y-1">
                             <Label htmlFor="facultyMooc">Faculty</Label>
                             <Select value={selectedFacultyMooc} onValueChange={setSelectedFacultyMooc} required>
                                 <SelectTrigger id="facultyMooc"><SelectValue placeholder="Select Faculty" /></SelectTrigger>
                                 <SelectContent>{facultyList.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
-                        <div>
+                        <div className="space-y-1">
                             <Label htmlFor="semesterMooc">Semester</Label>
                             <Select value={selectedSemesterMooc} onValueChange={setSelectedSemesterMooc} required>
                                 <SelectTrigger id="semesterMooc"><SelectValue placeholder="Select Semester" /></SelectTrigger>
@@ -408,3 +408,4 @@ export default function AdminAssignmentsPage() {
     </div>
   );
 }
+
