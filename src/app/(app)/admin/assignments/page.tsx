@@ -9,8 +9,8 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
-import type { FacultySubjectAssignment, MoocCoordinatorAssignment, User } from '@/types';
-import { Briefcase, BookUser, PlusCircle, Trash2, Settings2, UserCheck, ShieldCheck } from 'lucide-react';
+import type { FacultySubjectAssignment, MoocCoordinatorAssignment, User, Subject } from '@/types';
+import { Briefcase, BookUser, PlusCircle, Trash2, Settings2, UserCheck, ShieldCheck, Building } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { fetchAllActiveFacultyAction } from '@/actions/faculty-actions';
@@ -20,27 +20,15 @@ import {
   deleteFacultySubjectAssignmentAction,
   assignMoocCoordinatorAction,
   fetchAllMoocCoordinatorAssignmentsWithFacultyNamesAction,
-  deleteMoocCoordinatorAssignmentAction
+  deleteMoocCoordinatorAssignmentAction,
+  fetchSubjectsByDepartmentAndSemesterAction // New action
 } from '@/actions/admin-actions';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DEPARTMENTS } from '@/lib/subjects'; // Import DEPARTMENTS
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
-const ALL_SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: string }[]> = {
-  "1": [{ code: "MA101", name: "Applied Mathematics I" }, { code: "PH102", name: "Engineering Physics" }],
-  "2": [{ code: "MA201", name: "Applied Mathematics II" }, { code: "CH202", name: "Engineering Chemistry" }],
-  "3": [{ code: "CS301", name: "Data Structures" }, { code: "CS302", name: "Discrete Mathematics" }, { code: "EC303", name: "Analog Electronics" }, { code: "CS304", name: "Digital Design & Comp Org"}],
-  "4": [
-    { code: "BCS401", name: "Analysis and Design of Algorithms" }, { code: "BCS402", name: "Microcontrollers" },
-    { code: "BCS403", name: "Database Management System" }, { code: "BCS405A", name: "Discrete Mathematical Structures" },
-    { code: "BCS405B", name: "Graph Theory" }, { code: "BIS402", name: "Advanced Java" },
-    { code: "BBOC407", name: "Biology for Engineers" }, { code: "BUHK408", name: "Universal Human Values" }
-  ],
-  "5": [{ code: "CS501", name: "Database Management" }, { code: "CS502", name: "Computer Networks" }],
-  "6": [{ code: "CS601", name: "Compiler Design" }, { code: "CS602", name: "Software Engineering" }],
-  "7": [{ code: "CS701", name: "Artificial Intelligence" }, { code: "CS702", name: "Cryptography" }],
-  "8": [{ code: "CS801", name: "Project Work" }, { code: "CS802", name: "Professional Elective" }],
-};
+// ALL_SUBJECTS_BY_SEMESTER is removed as subjects are now dynamic
 
 export default function AdminAssignmentsPage() {
   const { user } = useAuth();
@@ -53,8 +41,11 @@ export default function AdminAssignmentsPage() {
   const [subjectAssignments, setSubjectAssignments] = useState<FacultySubjectAssignment[]>([]);
   const [isLoadingSubAssign, setIsLoadingSubAssign] = useState(true);
   const [selectedFacultySub, setSelectedFacultySub] = useState('');
+  const [selectedDepartmentSub, setSelectedDepartmentSub] = useState(''); // New state for department
   const [selectedSemesterSub, setSelectedSemesterSub] = useState('');
   const [selectedSectionSub, setSelectedSectionSub] = useState('');
+  const [availableSubjectsForAssignment, setAvailableSubjectsForAssignment] = useState<Subject[]>([]); // For dynamic subjects
+  const [isLoadingAvailableSubjects, setIsLoadingAvailableSubjects] = useState(false);
   const [selectedSubjectInfo, setSelectedSubjectInfo] = useState<{ code: string; name: string } | null>(null);
   const [isSubmittingSub, setIsSubmittingSub] = useState(false);
 
@@ -65,7 +56,6 @@ export default function AdminAssignmentsPage() {
   const [selectedSemesterMooc, setSelectedSemesterMooc] = useState('');
   const [isSubmittingMooc, setIsSubmittingMooc] = useState(false);
 
-  const availableSubjectsForSemester = selectedSemesterSub ? ALL_SUBJECTS_BY_SEMESTER[selectedSemesterSub] || [] : [];
 
   const loadInitialData = useCallback(async () => {
     setIsLoadingFaculty(true);
@@ -95,11 +85,32 @@ export default function AdminAssignmentsPage() {
     }
   }, [user, loadInitialData]);
 
+  // Effect to load subjects for assignment when department or semester changes
+  useEffect(() => {
+    if (selectedDepartmentSub && selectedSemesterSub) {
+      setIsLoadingAvailableSubjects(true);
+      fetchSubjectsByDepartmentAndSemesterAction(selectedDepartmentSub, parseInt(selectedSemesterSub))
+        .then(subjects => {
+          setAvailableSubjectsForAssignment(subjects);
+          setSelectedSubjectInfo(null); // Reset selected subject
+        })
+        .catch(err => {
+          toast({ title: "Error", description: "Could not load subjects for the selected department/semester.", variant: "destructive" });
+          setAvailableSubjectsForAssignment([]);
+        })
+        .finally(() => setIsLoadingAvailableSubjects(false));
+    } else {
+      setAvailableSubjectsForAssignment([]);
+      setSelectedSubjectInfo(null);
+    }
+  }, [selectedDepartmentSub, selectedSemesterSub, toast]);
+
+
   // Subject Assignment Handlers
   const handleAddSubjectAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFacultySub || !selectedSubjectInfo || !selectedSemesterSub || !selectedSectionSub) {
-      toast({ title: "Missing Information", description: "Please select faculty, subject, semester, and section.", variant: "destructive" });
+    if (!selectedFacultySub || !selectedSubjectInfo || !selectedSemesterSub || !selectedSectionSub || !selectedDepartmentSub) {
+      toast({ title: "Missing Information", description: "Please select faculty, department, semester, subject, and section.", variant: "destructive" });
       return;
     }
     setIsSubmittingSub(true);
@@ -107,17 +118,16 @@ export default function AdminAssignmentsPage() {
       const newAssignment = await addFacultySubjectAssignmentAction({
         facultyId: selectedFacultySub,
         subjectCode: selectedSubjectInfo.code,
-        subjectName: selectedSubjectInfo.name,
+        subjectName: selectedSubjectInfo.name, // Subject name is from the selected Subject object
         semester: parseInt(selectedSemesterSub),
         section: selectedSectionSub,
+        // department is implicitly part of the subject selection now, not stored in FacultySubjectAssignment directly
       });
       setSubjectAssignments(prev => [...prev, newAssignment]);
       toast({ title: "Success", description: "Subject assignment added.", className: "bg-success text-success-foreground" });
-      // Reset form
       setSelectedFacultySub('');
       setSelectedSubjectInfo(null);
-      setSelectedSemesterSub('');
-      setSelectedSectionSub('');
+      // Keep department, semester, section for potentially more assignments to same class
     } catch (error) {
       toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
     } finally {
@@ -127,7 +137,7 @@ export default function AdminAssignmentsPage() {
 
   const handleDeleteSubjectAssignment = async (assignmentId: string) => {
     if (!confirm("Are you sure you want to delete this subject assignment?")) return;
-    setIsLoadingSubAssign(true); // Use general loading for table
+    setIsLoadingSubAssign(true); 
     try {
       await deleteFacultySubjectAssignmentAction(assignmentId);
       setSubjectAssignments(prev => prev.filter(a => a.id !== assignmentId));
@@ -149,7 +159,6 @@ export default function AdminAssignmentsPage() {
     setIsSubmittingMooc(true);
     try {
       const newOrUpdatedAssignment = await assignMoocCoordinatorAction(selectedFacultyMooc, parseInt(selectedSemesterMooc));
-      // Refresh the list to reflect potential upsert
       setMoocAssignments(prev => {
         const existingIndex = prev.findIndex(a => a.semester === newOrUpdatedAssignment.semester);
         if (existingIndex > -1) {
@@ -196,11 +205,10 @@ export default function AdminAssignmentsPage() {
   
   const FormSkeleton = () => (
     <div className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Skeleton className="h-10 w-full" /> <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
         </div>
         <Skeleton className="h-10 w-24" />
     </div>
@@ -240,17 +248,16 @@ export default function AdminAssignmentsPage() {
           <TabsTrigger value="moocCoordinators"><BookUser className="mr-2" />MOOC Coordinators</TabsTrigger>
         </TabsList>
 
-        {/* Subject Assignments Tab */}
         <TabsContent value="subjectAssignments">
           <Card>
             <CardHeader>
               <CardTitle>Assign Subject to Faculty</CardTitle>
-              <CardDescription>Map faculty members to specific subjects, semesters, and sections they will teach.</CardDescription>
+              <CardDescription>Map faculty members to specific subjects, semesters, and sections they will teach. Subjects are based on definitions in Subject Management.</CardDescription>
             </CardHeader>
             <CardContent>
               {isLoadingFaculty ? <FormSkeleton /> : (
                 <form onSubmit={handleAddSubjectAssignment} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                     <div>
                       <Label htmlFor="facultySub">Faculty</Label>
                       <Select value={selectedFacultySub} onValueChange={setSelectedFacultySub} required>
@@ -261,8 +268,17 @@ export default function AdminAssignmentsPage() {
                       </Select>
                     </div>
                     <div>
+                      <Label htmlFor="departmentSub" className="flex items-center"><Building className="mr-1 h-3 w-3 text-muted-foreground"/>Department</Label>
+                      <Select value={selectedDepartmentSub} onValueChange={v => {setSelectedDepartmentSub(v); setSelectedSemesterSub(''); setSelectedSubjectInfo(null);}} required>
+                        <SelectTrigger id="departmentSub"><SelectValue placeholder="Select Department" /></SelectTrigger>
+                        <SelectContent>
+                          {DEPARTMENTS.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
                       <Label htmlFor="semesterSub">Semester</Label>
-                      <Select value={selectedSemesterSub} onValueChange={v => {setSelectedSemesterSub(v); setSelectedSubjectInfo(null);}} required>
+                      <Select value={selectedSemesterSub} onValueChange={v => {setSelectedSemesterSub(v); setSelectedSubjectInfo(null);}} required disabled={!selectedDepartmentSub}>
                         <SelectTrigger id="semesterSub"><SelectValue placeholder="Select Semester" /></SelectTrigger>
                         <SelectContent>{SEMESTERS.map(s => <SelectItem key={s} value={s}>Sem {s}</SelectItem>)}</SelectContent>
                       </Select>
@@ -271,27 +287,33 @@ export default function AdminAssignmentsPage() {
                       <Label htmlFor="subjectSub">Subject</Label>
                       <Select 
                         value={selectedSubjectInfo?.code || ''} 
-                        onValueChange={code => setSelectedSubjectInfo(availableSubjectsForSemester.find(s => s.code === code) || null)} 
+                        onValueChange={code => {
+                            const subject = availableSubjectsForAssignment.find(s => s.subjectCode === code);
+                            setSelectedSubjectInfo(subject ? { code: subject.subjectCode, name: subject.subjectName } : null);
+                        }} 
                         required 
-                        disabled={!selectedSemesterSub || availableSubjectsForSemester.length === 0}
+                        disabled={!selectedSemesterSub || isLoadingAvailableSubjects || availableSubjectsForAssignment.length === 0}
                       >
                         <SelectTrigger id="subjectSub">
-                            <SelectValue placeholder={selectedSemesterSub && availableSubjectsForSemester.length === 0 ? "No subjects for sem" : "Select Subject"} />
+                            <SelectValue placeholder={
+                                isLoadingAvailableSubjects ? "Loading subjects..." :
+                                (selectedDepartmentSub && selectedSemesterSub && availableSubjectsForAssignment.length === 0 ? "No subjects for dept/sem" : "Select Subject")
+                            } />
                         </SelectTrigger>
                         <SelectContent>
-                            {availableSubjectsForSemester.map(s => <SelectItem key={s.code} value={s.code}>{s.name} ({s.code})</SelectItem>)}
+                            {availableSubjectsForAssignment.map(s => <SelectItem key={s.subjectCode} value={s.subjectCode}>{s.subjectName} ({s.subjectCode})</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
                       <Label htmlFor="sectionSub">Section</Label>
-                      <Select value={selectedSectionSub} onValueChange={setSelectedSectionSub} required>
+                      <Select value={selectedSectionSub} onValueChange={setSelectedSectionSub} required disabled={!selectedSemesterSub}>
                         <SelectTrigger id="sectionSub"><SelectValue placeholder="Select Section" /></SelectTrigger>
                         <SelectContent>{SECTIONS.map(s => <SelectItem key={s} value={s}>Sec {s}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
                   </div>
-                  <Button type="submit" disabled={isSubmittingSub || isLoadingFaculty}>
+                  <Button type="submit" disabled={isSubmittingSub || isLoadingFaculty || isLoadingAvailableSubjects}>
                     <PlusCircle className="mr-2" /> {isSubmittingSub ? 'Assigning...' : 'Assign Subject'}
                   </Button>
                 </form>
@@ -325,7 +347,6 @@ export default function AdminAssignmentsPage() {
           </Card>
         </TabsContent>
 
-        {/* MOOC Coordinator Assignments Tab */}
         <TabsContent value="moocCoordinators">
           <Card>
             <CardHeader>
@@ -387,4 +408,3 @@ export default function AdminAssignmentsPage() {
     </div>
   );
 }
-

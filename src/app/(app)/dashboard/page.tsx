@@ -4,7 +4,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, BarChart as BarChartIcon, Settings2, LibraryBig, UserSearch, Archive } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, BarChart2, Settings2, LibraryBig, UserSearch, Archive, BookCopy } from 'lucide-react';
 import Link from 'next/link';
 
 const StudentDashboard = () => {
@@ -87,7 +87,7 @@ const FacultyDashboard = () => (
     </Card>
     <Card className="shadow-lg hover:shadow-xl transition-shadow">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><BarChartIcon className="text-primary" /> Class Performance</CardTitle>
+        <CardTitle className="flex items-center gap-2"><BarChart2 className="text-primary" /> Class Performance</CardTitle>
         <CardDescription>View marks and performance statistics for classes.</CardDescription>
       </CardHeader>
       <CardContent>
@@ -156,6 +156,17 @@ const AdminDashboard = () => (
             </Button>
         </CardContent>
     </Card>
+    <Card className="shadow-lg hover:shadow-xl transition-shadow">
+        <CardHeader>
+            <CardTitle className="flex items-center gap-2"><BookCopy className="text-primary" /> Subject Management</CardTitle>
+            <CardDescription>Define and manage subjects for departments and semesters.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <Button asChild variant="outline">
+                <Link href="/admin/subject-management">Manage Subjects <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>
+        </CardContent>
+    </Card>
   </div>
 );
 
@@ -197,4 +208,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

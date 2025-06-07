@@ -1,5 +1,4 @@
 
-
 export type UserRole = 'Student' | 'Faculty' | 'Admin';
 export type UserStatus = 'PendingApproval' | 'Active' | 'Rejected' | 'Disabled';
 
@@ -41,6 +40,16 @@ export interface StudentProfile {
   avatar?: string; 
 }
 
+export interface Subject {
+  _id?: any;
+  id: string;
+  department: string;
+  semester: number;
+  subjectCode: string;
+  subjectName: string;
+  credits: number;
+}
+
 export interface SubjectMark {
   _id?: string; 
   id: string; 
@@ -69,13 +78,13 @@ export interface MiniProject {
   reportUrl?: string; 
   submittedDate: string; 
   status: SubmissionStatus;
-  facultyId?: string; // ID of faculty who actioned (approved/rejected)
+  facultyId?: string; 
   remarks?: string;
   subject: string;
-  guideId?: string; // ID of faculty chosen by student as guide
+  guideId?: string; 
   submissionSemester: number; 
-  studentName?: string; // Populated for display
-  guideName?: string; // Populated for display
+  studentName?: string; 
+  guideName?: string; 
 }
 
 export interface MoocCourse {
@@ -120,10 +129,9 @@ export interface MoocCoordinatorAssignment {
   semester: number; 
 }
 
-// For Class Performance Page
 export interface StudentClassPerformanceDetails {
   profile: StudentProfile;
-  marksBySubject: Record<string, SubjectMark | undefined>; // Keyed by subjectCode
+  marksBySubject: Record<string, SubjectMark | undefined>; 
 }
 
 

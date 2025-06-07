@@ -1,23 +1,23 @@
 
 'use client';
 
-import React from 'react';
+import React from 'react'; // Ensure React is imported for React.Fragment
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
-import type { StudentClassPerformanceDetails, SubjectMark } from '@/types';
+import type { StudentClassPerformanceDetails, SubjectMark, Subject } from '@/types'; // Added Subject type
 import { BarChart2, Info, Users, Percent, TrendingUp, TrendingDown, CheckSquare, XSquare, Building } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { fetchAllMarksForClassAction } from '@/actions/marks-actions';
+import { fetchSubjectsByDepartmentAndSemesterAction } from '@/actions/admin-actions'; // For dynamic subjects
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from '@/components/ui/skeleton';
-import { ALL_SUBJECTS_BY_SEMESTER, DEPARTMENTS } from '@/lib/subjects'; // Import DEPARTMENTS
+import { DEPARTMENTS } from '@/lib/subjects'; 
 import { Label } from '@/components/ui/label';
 
-// const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical"]; // Moved to src/lib/subjects.ts
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
 
@@ -34,35 +34,60 @@ export default function ClassPerformancePage() {
   const [selectedSemester, setSelectedSemester] = useState<string>("");
   const [selectedSection, setSelectedSection] = useState<string>("");
   const [classPerformanceData, setClassPerformanceData] = useState<StudentClassPerformanceDetails[]>([]);
+  const [subjectsForSelectedSemester, setSubjectsForSelectedSemester] = useState<Subject[]>([]); // State for dynamic subjects
   const [isLoading, setIsLoading] = useState(false);
   const [initialLoadAttempted, setInitialLoadAttempted] = useState(false);
 
-  const subjectsForSelectedSemester = useMemo(() => {
-    return selectedSemester ? ALL_SUBJECTS_BY_SEMESTER[selectedSemester] || [] : [];
-  }, [selectedSemester]);
+
+  // Fetch subjects when department and semester change
+  useEffect(() => {
+    if (selectedDepartment && selectedSemester) {
+      setIsLoading(true);
+      fetchSubjectsByDepartmentAndSemesterAction(selectedDepartment, parseInt(selectedSemester))
+        .then(data => {
+          setSubjectsForSelectedSemester(data);
+          if (data.length === 0) {
+            toast({ title: "No Subjects Defined", description: `No subjects found for ${selectedDepartment} - Semester ${selectedSemester} in Subject Management.`, variant: "default" });
+          }
+        })
+        .catch(err => {
+          console.error("Error fetching subjects for class performance:", err);
+          toast({ title: "Error Loading Subjects", description: (err as Error).message || "Could not load subjects for the selected class.", variant: "destructive" });
+          setSubjectsForSelectedSemester([]);
+        })
+        .finally(() => setIsLoading(false)); // Potentially defer this if marks loading starts
+    } else {
+      setSubjectsForSelectedSemester([]);
+    }
+  }, [selectedDepartment, selectedSemester, toast]);
+
 
   useEffect(() => {
-    if (user && user.role === 'Faculty' && selectedDepartment && selectedSemester && selectedSection) {
+    if (user && user.role === 'Faculty' && selectedDepartment && selectedSemester && selectedSection && subjectsForSelectedSemester.length > 0) {
       setIsLoading(true);
       setInitialLoadAttempted(true);
       fetchAllMarksForClassAction(parseInt(selectedSemester), selectedSection, selectedDepartment)
         .then(data => {
           setClassPerformanceData(data);
-          if (data.length === 0) {
-            toast({ title: "No Students Found", description: "No active students found for the selected class, or no marks entered.", variant: "default" });
+          if (data.length === 0 && subjectsForSelectedSemester.length > 0) { // Check if subjects were expected
+            toast({ title: "No Student Data", description: "No active students found for the selected class, or no marks entered for the defined subjects.", variant: "default" });
           }
         })
         .catch(err => {
           console.error("Error fetching class performance:", err);
-          toast({ title: "Error Loading Data", description: (err as Error).message || "Could not load class performance data.", variant: "destructive" });
+          toast({ title: "Error Loading Performance Data", description: (err as Error).message || "Could not load class performance data.", variant: "destructive" });
         })
         .finally(() => setIsLoading(false));
+    } else if (selectedDepartment && selectedSemester && selectedSection && subjectsForSelectedSemester.length === 0 && !isLoading) {
+      // If selections are made but no subjects are defined (and not currently loading subjects), clear performance data
+      setClassPerformanceData([]);
+      setInitialLoadAttempted(true); // Mark that an attempt was made
     } else {
       setClassPerformanceData([]);
       setInitialLoadAttempted(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, selectedDepartment, selectedSemester, selectedSection, toast]);
+  }, [user, selectedDepartment, selectedSemester, selectedSection, subjectsForSelectedSemester, toast]); // Added subjectsForSelectedSemester
 
   const performanceSummaryBySubject = useMemo(() => {
     const summary: Record<string, SubjectPerformanceSummary> = {};
@@ -71,25 +96,18 @@ export default function ClassPerformancePage() {
     }
 
     subjectsForSelectedSemester.forEach(subject => {
-      summary[subject.code] = { passedCount: 0, failedCount: 0, marksEnteredCount: 0 };
+      summary[subject.subjectCode] = { passedCount: 0, failedCount: 0, marksEnteredCount: 0 };
       classPerformanceData.forEach(studentData => {
-        const mark = studentData.marksBySubject[subject.code];
+        const mark = studentData.marksBySubject[subject.subjectCode];
         if (mark && (typeof mark.ia1_50 === 'number' || typeof mark.ia2_50 === 'number')) {
-            summary[subject.code].marksEnteredCount++;
+            summary[subject.subjectCode].marksEnteredCount++;
             const ia1 = typeof mark.ia1_50 === 'number' ? mark.ia1_50 : 0;
             const ia2 = typeof mark.ia2_50 === 'number' ? mark.ia2_50 : 0;
             const totalIA = ia1 + ia2;
-            // Assuming pass mark is 40% of total IA marks (e.g., 40 out of 100 if scaled, or 20 if each IA is 50 and sum considered)
-            // Let's consider 20 for IA1(50) + IA2(50) = 100 -> pass at 40. If directly considering 50, pass at 20 for each, average pass 20.
-            // For simplicity, we'll stick to the previous combined IA pass mark logic: sum of IA1 + IA2 >= 20 (out of a conceptual 50 max average if scaled, or 40 out of 100)
-            // This needs clarification based on actual marking scheme. Let's assume pass = 20 out of 50 for an IA average or 40% of total.
-            // If IA1 and IA2 are max 50 each, total 100. 40% is 40.
-            // The prompt mentioned: student is failed if he scores less than 20 out of combined marks for iat1 and iat 2
-            // This implies 20 is the pass mark for the sum.
             if (totalIA >= 20) { 
-                summary[subject.code].passedCount++;
+                summary[subject.subjectCode].passedCount++;
             } else {
-                summary[subject.code].failedCount++;
+                summary[subject.subjectCode].failedCount++;
             }
         }
       });
@@ -111,12 +129,12 @@ export default function ClassPerformancePage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Select Class</CardTitle>
-          <CardDescription>Choose department, semester, and section to view performance details.</CardDescription>
+          <CardDescription>Choose department, semester, and section to view performance details. Subjects listed are based on Admin's Subject Management.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
             <Label htmlFor="department" className="flex items-center"><Building className="mr-2 h-4 w-4 text-muted-foreground"/>Department</Label>
-            <Select value={selectedDepartment} onValueChange={(value) => {setSelectedDepartment(value); setSelectedSemester(''); setSelectedSection('');}}>
+            <Select value={selectedDepartment} onValueChange={(value) => {setSelectedDepartment(value); setSelectedSemester(''); setSelectedSection(''); setClassPerformanceData([]); setSubjectsForSelectedSemester([]);}}>
               <SelectTrigger id="department"><SelectValue placeholder="Select Department" /></SelectTrigger>
               <SelectContent>
                 {DEPARTMENTS.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
@@ -125,7 +143,7 @@ export default function ClassPerformancePage() {
           </div>
           <div className="space-y-1">
             <Label htmlFor="semester">Semester</Label>
-            <Select value={selectedSemester} onValueChange={(value) => {setSelectedSemester(value); setSelectedSection('');}} disabled={!selectedDepartment}>
+            <Select value={selectedSemester} onValueChange={(value) => {setSelectedSemester(value); setSelectedSection(''); setClassPerformanceData([]); setSubjectsForSelectedSemester([]);}} disabled={!selectedDepartment}>
               <SelectTrigger id="semester"><SelectValue placeholder="Select Semester" /></SelectTrigger>
               <SelectContent>
                 {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
@@ -134,7 +152,7 @@ export default function ClassPerformancePage() {
           </div>
           <div className="space-y-1">
             <Label htmlFor="section">Section</Label>
-            <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedSemester}>
+            <Select value={selectedSection} onValueChange={(v) => {setSelectedSection(v); setClassPerformanceData([]);}} disabled={!selectedSemester}>
               <SelectTrigger id="section"><SelectValue placeholder="Select Section" /></SelectTrigger>
               <SelectContent>
                 {SECTIONS.map(sec => <SelectItem key={sec} value={sec}>Section {sec}</SelectItem>)}
@@ -155,8 +173,10 @@ export default function ClassPerformancePage() {
           <CardContent>
             {isLoading ? (
               <TableSkeleton rows={5} cols={subjectsForSelectedSemester.length * 2 + 2} />
-            ) : initialLoadAttempted && classPerformanceData.length === 0 ? (
-              <p className="text-center py-8 text-muted-foreground">No student data found for this selection. Ensure students are enrolled and marks are entered for this department, semester and section.</p>
+            ) : initialLoadAttempted && subjectsForSelectedSemester.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground">No subjects defined for this department and semester in Subject Management. Please contact an administrator.</p>
+            ) : initialLoadAttempted && classPerformanceData.length === 0 && subjectsForSelectedSemester.length > 0 ? (
+              <p className="text-center py-8 text-muted-foreground">No student data found for this selection. Ensure students are enrolled and marks are entered for the defined subjects.</p>
             ) : classPerformanceData.length > 0 && subjectsForSelectedSemester.length > 0 ? (
               <>
                 <div className="overflow-x-auto">
@@ -166,8 +186,8 @@ export default function ClassPerformancePage() {
                         <TableHead className="sticky left-0 bg-card z-10">Student Name</TableHead>
                         <TableHead className="sticky left-[150px] bg-card z-10 md:left-[200px]">USN</TableHead>
                         {subjectsForSelectedSemester.map(subject => (
-                          <React.Fragment key={subject.code}>
-                            <TableHead className="text-center min-w-[160px]">{subject.name} ({subject.code}) - IA1</TableHead>
+                          <React.Fragment key={subject.subjectCode}>
+                            <TableHead className="text-center min-w-[160px]">{subject.subjectName} ({subject.subjectCode}) - IA1</TableHead>
                             <TableHead className="text-center min-w-[80px]">IA2</TableHead>
                           </React.Fragment>
                         ))}
@@ -179,9 +199,9 @@ export default function ClassPerformancePage() {
                           <TableCell className="font-medium sticky left-0 bg-card z-10 w-[150px] md:w-[200px] truncate">{studentData.profile.fullName}</TableCell>
                           <TableCell className="sticky left-[150px] bg-card z-10 md:left-[200px] w-[120px]">{studentData.profile.admissionId}</TableCell>
                           {subjectsForSelectedSemester.map(subject => (
-                            <React.Fragment key={`${studentData.profile.userId}-${subject.code}`}>
-                              <TableCell className="text-center">{studentData.marksBySubject[subject.code]?.ia1_50 ?? 'N/A'}</TableCell>
-                              <TableCell className="text-center">{studentData.marksBySubject[subject.code]?.ia2_50 ?? 'N/A'}</TableCell>
+                            <React.Fragment key={`${studentData.profile.userId}-${subject.subjectCode}`}>
+                              <TableCell className="text-center">{studentData.marksBySubject[subject.subjectCode]?.ia1_50 ?? 'N/A'}</TableCell>
+                              <TableCell className="text-center">{studentData.marksBySubject[subject.subjectCode]?.ia2_50 ?? 'N/A'}</TableCell>
                             </React.Fragment>
                           ))}
                         </TableRow>
@@ -195,17 +215,17 @@ export default function ClassPerformancePage() {
                     <p className="mb-4 text-sm text-muted-foreground">Total Students in Class: {classPerformanceData.length}</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {subjectsForSelectedSemester.map(subject => {
-                            const summary = performanceSummaryBySubject[subject.code];
+                            const summary = performanceSummaryBySubject[subject.subjectCode];
                             if (!summary || summary.marksEnteredCount === 0) return (
-                                <Card key={subject.code} className="bg-muted/30">
-                                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">{subject.name} ({subject.code})</CardTitle></CardHeader>
+                                <Card key={subject.subjectCode} className="bg-muted/30">
+                                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">{subject.subjectName} ({subject.subjectCode})</CardTitle></CardHeader>
                                     <CardContent><p className="text-xs text-muted-foreground">No IA marks entered.</p></CardContent>
                                 </Card>
                             );
                             return (
-                                <Card key={subject.code} className="bg-muted/30">
+                                <Card key={subject.subjectCode} className="bg-muted/30">
                                 <CardHeader className="pb-2">
-                                    <CardTitle className="text-sm font-medium">{subject.name} ({subject.code})</CardTitle>
+                                    <CardTitle className="text-sm font-medium">{subject.subjectName} ({subject.subjectCode})</CardTitle>
                                     <CardDescription className="text-xs">{summary.marksEnteredCount} students with IA marks</CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-1">
@@ -219,7 +239,7 @@ export default function ClassPerformancePage() {
                   </CardContent>
                 </Card>
               </>
-            ) : initialLoadAttempted && <p className="text-center py-8 text-muted-foreground">No subjects defined for the selected semester, or no student data found.</p>}
+            ) : initialLoadAttempted && <p className="text-center py-8 text-muted-foreground">No student data or subjects to display for this selection.</p>}
           </CardContent>
         </Card>
       )}

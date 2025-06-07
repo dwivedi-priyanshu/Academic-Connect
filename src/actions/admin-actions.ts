@@ -5,9 +5,10 @@ import { connectToDatabase } from '@/lib/mongodb';
 import { 
   FACULTY_SUBJECT_ASSIGNMENTS_COLLECTION, 
   MOOC_COORDINATOR_ASSIGNMENTS_COLLECTION,
+  SUBJECTS_COLLECTION, // Added
   USERS_COLLECTION
 } from '@/lib/constants';
-import type { FacultySubjectAssignment, MoocCoordinatorAssignment, User } from '@/types';
+import type { FacultySubjectAssignment, MoocCoordinatorAssignment, User, Subject } from '@/types'; // Added Subject
 import type { Collection } from 'mongodb';
 import { ObjectId } from 'mongodb';
 
@@ -26,6 +27,12 @@ async function getUsersCollection(): Promise<Collection<User>> {
   const { db } = await connectToDatabase();
   return db.collection<User>(USERS_COLLECTION);
 }
+
+async function getSubjectsCollection(): Promise<Collection<Subject>> {
+  const { db } = await connectToDatabase();
+  return db.collection<Subject>(SUBJECTS_COLLECTION);
+}
+
 
 // --- Faculty Subject Assignment Actions ---
 
@@ -127,8 +134,6 @@ export async function assignMoocCoordinatorAction(facultyId: string, semester: n
   try {
     const assignmentsCollection = await getMoocCoordinatorAssignmentsCollection();
     
-    // Upsert: Update if exists for that semester, or insert if not.
-    // This ensures only one coordinator per semester.
     const result = await assignmentsCollection.findOneAndUpdate(
       { semester: semester },
       { $set: { facultyId: facultyId, semester: semester } },
@@ -137,7 +142,7 @@ export async function assignMoocCoordinatorAction(facultyId: string, semester: n
 
     if (!result) throw new Error('Failed to assign MOOC coordinator.');
     
-    const assignedDoc = result as MoocCoordinatorAssignment; // result includes the value after update/insert
+    const assignedDoc = result as MoocCoordinatorAssignment; 
     const usersCollection = await getUsersCollection();
     const faculty = await usersCollection.findOne({ id: facultyId });
 
@@ -163,5 +168,66 @@ export async function deleteMoocCoordinatorAssignmentAction(assignmentId: string
   } catch (error) {
     console.error('Error deleting MOOC coordinator assignment:', error);
     throw new Error('Failed to delete MOOC coordinator assignment.');
+  }
+}
+
+
+// --- Subject Management Actions ---
+
+export async function fetchSubjectsByDepartmentAndSemesterAction(department: string, semester: number): Promise<Subject[]> {
+  try {
+    const subjectsCollection = await getSubjectsCollection();
+    const subjectsCursor = subjectsCollection.find({ department, semester: Number(semester) });
+    const subjectsArray = await subjectsCursor.toArray();
+    return subjectsArray.map(s => ({
+        ...s,
+        id: s._id.toHexString(),
+        _id: s._id.toHexString(),
+    }));
+  } catch (error) {
+    console.error('Error fetching subjects by department and semester:', error);
+    throw new Error('Failed to fetch subjects.');
+  }
+}
+
+export async function addSubjectAction(
+  department: string,
+  semester: number,
+  subjectCode: string,
+  subjectName: string,
+  credits: number
+): Promise<Subject> {
+  try {
+    const subjectsCollection = await getSubjectsCollection();
+    const existingSubject = await subjectsCollection.findOne({ department, semester: Number(semester), subjectCode });
+    if (existingSubject) {
+      throw new Error(`Subject with code ${subjectCode} already exists for ${department} - Semester ${semester}.`);
+    }
+
+    const newSubjectData: Omit<Subject, 'id' | '_id'> = {
+      department,
+      semester: Number(semester),
+      subjectCode,
+      subjectName,
+      credits: Number(credits),
+    };
+    const result = await subjectsCollection.insertOne(newSubjectData as Subject);
+    const insertedIdStr = result.insertedId.toHexString();
+    return { ...newSubjectData, id: insertedIdStr, _id: insertedIdStr } as Subject;
+  } catch (error) {
+    console.error('Error adding subject:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to add subject.';
+    throw new Error(errorMessage);
+  }
+}
+
+export async function deleteSubjectAction(subjectId: string): Promise<boolean> {
+  try {
+    const subjectsCollection = await getSubjectsCollection();
+    const result = await subjectsCollection.deleteOne({ _id: new ObjectId(subjectId) });
+    return result.deletedCount === 1;
+  } catch (error) {
+    console.error('Error deleting subject:', error);
+    throw new Error('Failed to delete subject.');
   }
 }

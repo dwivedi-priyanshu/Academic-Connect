@@ -20,7 +20,8 @@ import {
   Settings2, 
   LibraryBig,
   UserSearch,
-  Archive // Added Archive icon
+  Archive,
+  BookCopy // Added BookCopy icon
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -48,10 +49,11 @@ const navItems: NavItem[] = [
   { href: '/faculty/class-performance', label: 'Class Performance', icon: BarChart2, roles: ['Faculty'] },
   { href: '/faculty/approvals', label: 'Approvals', icon: CheckSquare, roles: ['Faculty'] },
   { href: '/faculty/approved-projects', label: 'Project Repository', icon: LibraryBig, roles: ['Faculty'] },
-  { href: '/faculty/mooc-repository', label: 'MOOC Repository', icon: Archive, roles: ['Faculty'] }, // New MOOC Repo link
+  { href: '/faculty/mooc-repository', label: 'MOOC Repository', icon: Archive, roles: ['Faculty'] }, 
   // Admin specific
   { href: '/admin/users', label: 'User Management', icon: ShieldCheck, roles: ['Admin'] },
   { href: '/admin/assignments', label: 'Assignments', icon: Settings2, roles: ['Admin'] }, 
+  { href: '/admin/subject-management', label: 'Subject Management', icon: BookCopy, roles: ['Admin'] },
 ];
 
 export function AppSidebar() {
@@ -90,4 +92,3 @@ export function AppSidebar() {
     </aside>
   );
 }
-
