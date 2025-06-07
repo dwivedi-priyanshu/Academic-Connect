@@ -3,11 +3,11 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass, KeyRound, Edit, Save } from 'lucide-react'; // Added Save here
+import { ShieldCheck, UserPlus, Users, CheckCircle, XCircle, Hourglass, KeyRound, Edit, Save, UserCog, School } from 'lucide-react'; // Added UserCog, School
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { User, UserStatus, StudentProfile } from '@/types'; 
-import { useState, useEffect, useCallback } from 'react';
+import type { User, UserStatus, StudentProfile, UserRole } from '@/types'; 
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fetchAllUsersAction, updateUserStatusAction, fetchStudentFullProfileDataAction, saveStudentProfileDataAction } from '@/actions/profile-actions';
 import { useToast } from "@/hooks/use-toast";
@@ -21,8 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
-// A basic list of departments. This could come from a central config or DB in a larger app.
-const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical", "Information Science", "Biotechnology", "Aerospace"];
+const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical", "Information Science", "Biotechnology", "Aerospace", "Computer Science & Engineering", "Computer Science & Engineering (AI and ML)", "Computer Science & Engineering (Data Science)", "Artificial Intelligence and Machine Learning", "Artificial Intelligence and Data Science", "Information Science & Engineering", "Electronics & Communication Engineering"];
 
 
 export default function AdminUsersPage() {
@@ -30,7 +29,9 @@ export default function AdminUsersPage() {
   const { toast } = useToast();
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<UserStatus | 'all'>('all');
+  
+  const [activeMainTab, setActiveMainTab] = useState<UserRole | 'all'>('Student'); // Default to Student
+  const [activeStatusTab, setActiveStatusTab] = useState<UserStatus | 'all'>('all');
 
   const [isUsnModalOpen, setIsUsnModalOpen] = useState(false);
   const [selectedUserForApproval, setSelectedUserForApproval] = useState<User | null>(null);
@@ -42,11 +43,12 @@ export default function AdminUsersPage() {
   const [isSavingStudentProfile, setIsSavingStudentProfile] = useState(false);
 
 
-  const loadUsers = useCallback((statusFilter?: UserStatus | 'all') => {
+  const loadUsers = useCallback(() => {
     if (user && user.role === 'Admin') {
         setIsLoading(true);
-        const filters = statusFilter && statusFilter !== 'all' ? { status: statusFilter } : {};
-        fetchAllUsersAction(filters).then(data => {
+        // Fetch all users based on status filter, then client-side filter by role
+        const statusFilters = activeStatusTab && activeStatusTab !== 'all' ? { status: activeStatusTab } : {};
+        fetchAllUsersAction(statusFilters).then(data => {
             setAllUsers(data);
         }).catch(err => {
             console.error("Error fetching users:", err);
@@ -55,11 +57,24 @@ export default function AdminUsersPage() {
     } else {
         setIsLoading(false);
     }
-  }, [user, toast]);
+  }, [user, activeStatusTab, toast]);
 
   useEffect(() => {
-    loadUsers(activeTab);
-  }, [activeTab, loadUsers]); 
+    loadUsers();
+  }, [activeStatusTab, loadUsers]); 
+
+  const displayedUsers = useMemo(() => {
+    if (activeMainTab === 'all') return allUsers; // Should not happen with new tab structure
+    return allUsers.filter(u => u.role === activeMainTab);
+  }, [allUsers, activeMainTab]);
+
+  const getStatusCount = (status: UserStatus) => {
+    return allUsers.filter(u => u.role === activeMainTab && u.status === status).length;
+  };
+  const getTotalCountForRole = () => {
+    return allUsers.filter(u => u.role === activeMainTab).length;
+  }
+
 
   const handleOpenUsnModal = (userToApprove: User) => {
     setSelectedUserForApproval(userToApprove);
@@ -83,7 +98,7 @@ export default function AdminUsersPage() {
                 description: descriptionMessage, 
                 className: "bg-success text-success-foreground" 
             });
-            loadUsers(activeTab); 
+            loadUsers(); 
         } else {
             toast({ title: "Approval Failed", description: `Could not approve ${selectedUserForApproval.name}. The user status might not have changed, or the USN update failed.`, variant: "destructive" });
         }
@@ -109,7 +124,7 @@ export default function AdminUsersPage() {
         const success = await updateUserStatusAction(targetUser.id, newStatus, undefined);
         if (success) {
             toast({ title: "Status Updated", description: `${targetUser.name}'s status changed to ${newStatus}.`, className: "bg-success text-success-foreground" });
-            loadUsers(activeTab); 
+            loadUsers(); 
         } else {
             toast({ title: "Update Failed", description: `Could not update status for ${targetUser.name}.`, variant: "destructive" });
         }
@@ -123,7 +138,7 @@ export default function AdminUsersPage() {
 
   const handleOpenEditStudentModal = async (studentUser: User) => {
     setEditingStudentUser(studentUser);
-    setIsSavingStudentProfile(true); // Use this for loading state of the modal
+    setIsSavingStudentProfile(true); 
     try {
       const profile = await fetchStudentFullProfileDataAction(studentUser.id);
       if (profile) {
@@ -131,12 +146,11 @@ export default function AdminUsersPage() {
           id: profile.id,
           userId: profile.userId,
           admissionId: profile.admissionId,
-          fullName: profile.fullName, // Keep it from profile, though user.name should match
+          fullName: profile.fullName, 
           department: profile.department,
           year: profile.year,
           currentSemester: profile.currentSemester,
           section: profile.section,
-          // Include other fields if they were intended to be editable by admin, for now focus on academic
           dateOfBirth: profile.dateOfBirth,
           contactNumber: profile.contactNumber,
           address: profile.address,
@@ -176,7 +190,7 @@ export default function AdminUsersPage() {
         if (success) {
             toast({ title: "Profile Saved", description: `${editingStudentProfile.fullName}'s profile updated successfully.`, className: "bg-success text-success-foreground" });
             setIsEditStudentModalOpen(false);
-            loadUsers(activeTab); // Refresh the list
+            loadUsers(); 
         } else {
             toast({ title: "Save Failed", description: "Could not save student profile changes.", variant: "destructive" });
         }
@@ -244,101 +258,25 @@ export default function AdminUsersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold flex items-center"><ShieldCheck className="mr-2 h-8 w-8 text-primary" /> User Management</h1>
+        <h1 className="text-3xl font-bold flex items-center"><Users className="mr-2 h-8 w-8 text-primary" /> User Management</h1>
         <Button disabled> 
           <UserPlus className="mr-2 h-4 w-4" /> Add New User (Coming Soon)
         </Button>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as UserStatus | 'all')}>
-        <TabsList className="grid w-full grid-cols-3 md:grid-cols-5">
-          <TabsTrigger value="all">All Users</TabsTrigger>
-          <TabsTrigger value="PendingApproval">Pending ({allUsers.filter(u=>u.status === 'PendingApproval').length})</TabsTrigger>
-          <TabsTrigger value="Active">Active ({allUsers.filter(u=>u.status === 'Active').length})</TabsTrigger>
-          <TabsTrigger value="Rejected">Rejected ({allUsers.filter(u=>u.status === 'Rejected').length})</TabsTrigger>
-          <TabsTrigger value="Disabled">Disabled ({allUsers.filter(u=>u.status === 'Disabled').length})</TabsTrigger>
+      <Tabs value={activeMainTab as string} onValueChange={(value) => setActiveMainTab(value as UserRole)}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="Student" className="flex items-center gap-2"><School className="h-4 w-4" /> Manage Students</TabsTrigger>
+          <TabsTrigger value="Faculty" className="flex items-center gap-2"><UserCog className="h-4 w-4" /> Manage Faculty</TabsTrigger>
         </TabsList>
-      </Tabs>
 
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle>User List ({activeTab === 'all' ? allUsers.length : allUsers.filter(u=>u.status === activeTab).length})</CardTitle>
-          <CardDescription>Manage user accounts, roles, and statuses. Students require USN assignment upon approval.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading && !isUsnModalOpen && !isEditStudentModalOpen ? ( 
-            <Table>
-                <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                <TableBody>
-                    {[...Array(5)].map((_, i) => (
-                        <TableRow key={i}>
-                            <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-                            <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                            <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-                            <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                            <TableCell className="text-right space-x-1">
-                                <Skeleton className="h-8 w-20 inline-block" />
-                                <Skeleton className="h-8 w-20 inline-block" />
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-          ) : (
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead className="w-[200px]">Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead className="w-[100px]">Role</TableHead>
-                        <TableHead className="w-[120px]">Status</TableHead>
-                        <TableHead className="text-right w-[280px]">Actions</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {allUsers.map(u => (
-                        <TableRow key={u.id}>
-                            <TableCell className="font-medium">{u.name}</TableCell>
-                            <TableCell>{u.email}</TableCell>
-                            <TableCell>{u.role}</TableCell>
-                            <TableCell><StatusBadge status={u.status} /></TableCell>
-                            <TableCell className="text-right space-x-1">
-                                {u.status === 'PendingApproval' && (
-                                    <>
-                                    <Button variant="ghost" size="sm" className="text-success hover:bg-success/10 hover:text-success" onClick={() => handleUpdateStatus(u, 'Active')} disabled={isLoading}>
-                                        <CheckCircle className="mr-1 h-4 w-4"/> Approve
-                                    </Button>
-                                    <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleUpdateStatus(u, 'Rejected')} disabled={isLoading}>
-                                        <XCircle className="mr-1 h-4 w-4"/> Reject
-                                    </Button>
-                                    </>
-                                )}
-                                {u.status === 'Active' && u.id !== user?.id && ( 
-                                     <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleUpdateStatus(u, 'Disabled')} disabled={isLoading}>
-                                        <XCircle className="mr-1 h-4 w-4"/> Disable
-                                    </Button>
-                                )}
-                                {(u.status === 'Rejected' || u.status === 'Disabled') && (
-                                     <Button variant="ghost" size="sm" className="text-success hover:bg-success/10 hover:text-success" onClick={() => handleUpdateStatus(u, 'Active')} disabled={isLoading}>
-                                        <CheckCircle className="mr-1 h-4 w-4"/> Re-Activate
-                                    </Button>
-                                )}
-                                {u.role === 'Student' && (
-                                    <Button variant="ghost" size="sm" onClick={() => handleOpenEditStudentModal(u)} disabled={isLoading}>
-                                        <Edit className="mr-1 h-4 w-4"/> Edit Profile
-                                    </Button>
-                                )}
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-          )}
-          {allUsers.length === 0 && !isLoading && (
-            <p className="text-center py-4 text-muted-foreground">No users found for the selected filter.</p>
-          )}
-        </CardContent>
-      </Card>
+        <TabsContent value="Student">
+          <UserManagementTable roleToManage="Student" />
+        </TabsContent>
+        <TabsContent value="Faculty">
+          <UserManagementTable roleToManage="Faculty" />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={isUsnModalOpen} onOpenChange={(isOpen) => {
           setIsUsnModalOpen(isOpen);
@@ -376,7 +314,6 @@ export default function AdminUsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Student Profile Dialog */}
       <Dialog open={isEditStudentModalOpen} onOpenChange={(isOpen) => {
           setIsEditStudentModalOpen(isOpen);
           if (!isOpen) {
@@ -475,5 +412,107 @@ export default function AdminUsersPage() {
 
     </div>
   );
+
+  function UserManagementTable({ roleToManage }: { roleToManage: UserRole }) {
+    const currentRoleUsers = displayedUsers.filter(u => u.role === roleToManage);
+    const currentRoleTotal = allUsers.filter(u => u.role === roleToManage).length;
+    const currentRolePending = allUsers.filter(u => u.role === roleToManage && u.status === 'PendingApproval').length;
+    const currentRoleActive = allUsers.filter(u => u.role === roleToManage && u.status === 'Active').length;
+    const currentRoleRejected = allUsers.filter(u => u.role === roleToManage && u.status === 'Rejected').length;
+    const currentRoleDisabled = allUsers.filter(u => u.role === roleToManage && u.status === 'Disabled').length;
+
+
+    return (
+      <div className="mt-4">
+        <Tabs value={activeStatusTab} onValueChange={(value) => setActiveStatusTab(value as UserStatus | 'all')}>
+          <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 mb-4">
+            <TabsTrigger value="all">All ({currentRoleTotal})</TabsTrigger>
+            <TabsTrigger value="PendingApproval">Pending ({currentRolePending})</TabsTrigger>
+            <TabsTrigger value="Active">Active ({currentRoleActive})</TabsTrigger>
+            <TabsTrigger value="Rejected">Rejected ({currentRoleRejected})</TabsTrigger>
+            <TabsTrigger value="Disabled">Disabled ({currentRoleDisabled})</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle>{roleToManage} List ({currentRoleUsers.length})</CardTitle>
+            <CardDescription>Manage {roleToManage.toLowerCase()} accounts, roles, and statuses. Students require USN assignment upon approval.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading && !isUsnModalOpen && !isEditStudentModalOpen ? ( 
+              <Table>
+                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                      {[...Array(5)].map((_, i) => (
+                          <TableRow key={i}>
+                              <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                              <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+                              <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                              <TableCell><Skeleton className="h-6 w-24" /></TableCell>
+                              <TableCell className="text-right space-x-1">
+                                  <Skeleton className="h-8 w-20 inline-block" />
+                                  <Skeleton className="h-8 w-20 inline-block" />
+                              </TableCell>
+                          </TableRow>
+                      ))}
+                  </TableBody>
+              </Table>
+            ) : (
+              <Table>
+                  <TableHeader>
+                      <TableRow>
+                          <TableHead className="w-[200px]">Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead className="w-[120px]">Status</TableHead>
+                          <TableHead className="text-right w-[280px]">Actions</TableHead>
+                      </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                      {currentRoleUsers.map(u => (
+                          <TableRow key={u.id}>
+                              <TableCell className="font-medium">{u.name}</TableCell>
+                              <TableCell>{u.email}</TableCell>
+                              <TableCell><StatusBadge status={u.status} /></TableCell>
+                              <TableCell className="text-right space-x-1">
+                                  {u.status === 'PendingApproval' && (
+                                      <>
+                                      <Button variant="ghost" size="sm" className="text-success hover:bg-success/10 hover:text-success" onClick={() => handleUpdateStatus(u, 'Active')} disabled={isLoading}>
+                                          <CheckCircle className="mr-1 h-4 w-4"/> Approve
+                                      </Button>
+                                      <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleUpdateStatus(u, 'Rejected')} disabled={isLoading}>
+                                          <XCircle className="mr-1 h-4 w-4"/> Reject
+                                      </Button>
+                                      </>
+                                  )}
+                                  {u.status === 'Active' && u.id !== user?.id && ( 
+                                       <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleUpdateStatus(u, 'Disabled')} disabled={isLoading}>
+                                          <XCircle className="mr-1 h-4 w-4"/> Disable
+                                      </Button>
+                                  )}
+                                  {(u.status === 'Rejected' || u.status === 'Disabled') && (
+                                       <Button variant="ghost" size="sm" className="text-success hover:bg-success/10 hover:text-success" onClick={() => handleUpdateStatus(u, 'Active')} disabled={isLoading}>
+                                          <CheckCircle className="mr-1 h-4 w-4"/> Re-Activate
+                                      </Button>
+                                  )}
+                                  {u.role === 'Student' && (
+                                      <Button variant="ghost" size="sm" onClick={() => handleOpenEditStudentModal(u)} disabled={isLoading}>
+                                          <Edit className="mr-1 h-4 w-4"/> Edit Profile
+                                      </Button>
+                                  )}
+                              </TableCell>
+                          </TableRow>
+                      ))}
+                  </TableBody>
+              </Table>
+            )}
+            {currentRoleUsers.length === 0 && !isLoading && (
+              <p className="text-center py-4 text-muted-foreground">No {roleToManage.toLowerCase()} users found for the selected filter.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 }
 
