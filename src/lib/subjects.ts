@@ -62,4 +62,5 @@ export const ALL_SUBJECTS_BY_SEMESTER: Record<string, { code: string, name: stri
   ],
 };
 
-export const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical"];
+export const DEPARTMENTS = ["Computer Science", "Electronics", "Mechanical", "Civil", "Electrical", "Information Science"];
+
