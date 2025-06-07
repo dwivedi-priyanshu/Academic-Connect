@@ -16,12 +16,10 @@ import { fetchStudentMarksAction } from '@/actions/student-data-actions';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
-// Input and Select might not be needed if all fields are read-only by faculty
-// import { Input } from '@/components/ui/input';
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Percent } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
@@ -35,7 +33,6 @@ export default function FacultyViewStudentDetailedProfilePage() {
 
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
-  // Removed isEditing, isSaving, editableProfile states as faculty won't edit here
 
   const [selectedMarksSemester, setSelectedMarksSemester] = useState<string>("");
   const [marksForSemester, setMarksForSemester] = useState<SubjectMark[]>([]);
@@ -47,7 +44,7 @@ export default function FacultyViewStudentDetailedProfilePage() {
       fetchStudentFullProfileDataAction(studentId).then(data => {
         setProfile(data);
         if (data) {
-            setSelectedMarksSemester(String(data.currentSemester)); // Default to current semester for marks
+            setSelectedMarksSemester(String(data.currentSemester)); 
         }
         setIsLoadingProfile(false);
       }).catch(err => {
@@ -73,7 +70,6 @@ export default function FacultyViewStudentDetailedProfilePage() {
     }
   }, [studentId, selectedMarksSemester, toast]);
 
-  // Removed handleInputChange, handleSelectChange, handleSubmit as faculty won't edit here
 
   if (!user || user.role !== 'Faculty') {
     return <p>Access denied. This page is for faculty members only.</p>;
@@ -128,7 +124,6 @@ export default function FacultyViewStudentDetailedProfilePage() {
       </Button>
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold flex items-center"><UserCircle className="mr-2 h-8 w-8 text-primary" /> Student Details</h1>
-        {/* Edit button removed for faculty */}
       </div>
       <Card className="lg:col-span-2 shadow-lg">
         <CardHeader className="flex flex-row items-center space-x-4 bg-muted/30 p-6 rounded-t-lg">
@@ -152,7 +147,7 @@ export default function FacultyViewStudentDetailedProfilePage() {
               <TabsTrigger value="marks" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none">Academic Marks</TabsTrigger>
             </TabsList>
             <TabsContent value="profile" className="p-6">
-              <div className="space-y-6"> {/* Removed form tag */}
+              <div className="space-y-6">
                 {Object.entries(profileSections).map(([sectionTitle, fields]) => (
                   <div key={sectionTitle}>
                     <h3 className="text-xl font-semibold mb-3 text-primary border-b pb-1.5">{sectionTitle}</h3>
@@ -176,7 +171,6 @@ export default function FacultyViewStudentDetailedProfilePage() {
                     </div>
                   </div>
                 ))}
-                {/* Save button removed as faculty cannot edit */}
               </div>
             </TabsContent>
             <TabsContent value="marks" className="p-6">
@@ -244,10 +238,9 @@ export default function FacultyViewStudentDetailedProfilePage() {
 
 const ProfilePageSkeleton = () => (
   <div className="space-y-6">
-    <Skeleton className="h-10 w-40 mb-4" /> {/* Back button skeleton */}
+    <Skeleton className="h-10 w-40 mb-4" /> 
     <div className="flex items-center justify-between">
-        <Skeleton className="h-10 w-64" /> {/* Title skeleton */}
-        {/* Edit button skeleton removed */}
+        <Skeleton className="h-10 w-64" /> 
     </div>
     <Card className="lg:col-span-2 shadow-lg">
         <CardHeader className="flex flex-row items-center space-x-4 bg-muted/30 p-6 rounded-t-lg">
@@ -258,16 +251,16 @@ const ProfilePageSkeleton = () => (
             </div>
         </CardHeader>
         <CardContent className="p-0">
-             <Skeleton className="h-10 w-full rounded-none" /> {/* TabsList Skeleton */}
+             <Skeleton className="h-10 w-full rounded-none" /> 
              <div className="p-6 space-y-6">
-                {[...Array(3)].map((_, sectionIndex) => ( // Changed s to _
+                {[...Array(3)].map((_, sectionIndex) => (
                     <div key={`section-skel-${sectionIndex}`}>
-                        <Skeleton className="h-6 w-1/3 mb-3" /> {/* Section Title */}
+                        <Skeleton className="h-6 w-1/3 mb-3" /> 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                         {[...Array(4)].map((_, fieldIndex) => ( 
                             <div key={`field-skel-${sectionIndex}-${fieldIndex}`} className="space-y-1">
-                            <Skeleton className="h-4 w-24 mb-1" /> {/* Label */}
-                            <Skeleton className="h-10 w-full" /> {/* Input/Text */}
+                            <Skeleton className="h-4 w-24 mb-1" /> 
+                            <Skeleton className="h-10 w-full" /> 
                             </div>
                         ))}
                         </div>
@@ -278,4 +271,6 @@ const ProfilePageSkeleton = () => (
     </Card>
   </div>
 );
+    
+
     
