@@ -19,7 +19,8 @@ import {
   BarChart2, 
   Settings2, 
   LibraryBig,
-  UserSearch 
+  UserSearch,
+  Archive // Added Archive icon
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -42,12 +43,12 @@ const navItems: NavItem[] = [
   { href: '/academics/projects', label: 'My Projects', icon: FileText, roles: ['Student'] },
   { href: '/academics/moocs', label: 'My MOOCs', icon: BookOpen, roles: ['Student'] },
   // Faculty specific
-  // { href: '/faculty/students', label: 'Student List', icon: Users, roles: ['Faculty'] }, // Removed as per request
   { href: '/faculty/student-lookup', label: 'Student Lookup', icon: UserSearch, roles: ['Faculty'] },
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
   { href: '/faculty/class-performance', label: 'Class Performance', icon: BarChart2, roles: ['Faculty'] },
   { href: '/faculty/approvals', label: 'Approvals', icon: CheckSquare, roles: ['Faculty'] },
   { href: '/faculty/approved-projects', label: 'Project Repository', icon: LibraryBig, roles: ['Faculty'] },
+  { href: '/faculty/mooc-repository', label: 'MOOC Repository', icon: Archive, roles: ['Faculty'] }, // New MOOC Repo link
   // Admin specific
   { href: '/admin/users', label: 'User Management', icon: ShieldCheck, roles: ['Admin'] },
   { href: '/admin/assignments', label: 'Assignments', icon: Settings2, roles: ['Admin'] }, 
@@ -89,3 +90,4 @@ export function AppSidebar() {
     </aside>
   );
 }
+

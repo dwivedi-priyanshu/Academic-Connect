@@ -4,8 +4,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-// Removed Alert related imports as it's no longer used globally here
-import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, BarChart as BarChartIcon, Settings2, LibraryBig } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, BarChart as BarChartIcon, Settings2, LibraryBig, UserSearch, Archive } from 'lucide-react';
 import Link from 'next/link';
 
 const StudentDashboard = () => {
@@ -64,20 +63,9 @@ const StudentDashboard = () => {
 
 const FacultyDashboard = () => (
   <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-    <Card className="shadow-lg hover:shadow-xl transition-shadow">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Users className="text-primary" /> Student List</CardTitle>
-        <CardDescription>View and manage student information.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button asChild variant="outline">
-          <Link href="/faculty/students">View Students <ArrowRight className="ml-2 h-4 w-4" /></Link>
-        </Button>
-      </CardContent>
-    </Card>
      <Card className="shadow-lg hover:shadow-xl transition-shadow">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><UserCircle className="text-primary" /> Student Lookup</CardTitle>
+        <CardTitle className="flex items-center gap-2"><UserSearch className="text-primary" /> Student Lookup</CardTitle>
         <CardDescription>Search and view detailed student profiles and marks.</CardDescription>
       </CardHeader>
       <CardContent>
@@ -126,7 +114,18 @@ const FacultyDashboard = () => (
       </CardHeader>
       <CardContent>
         <Button asChild variant="outline">
-          <Link href="/faculty/approved-projects">View Repository <ArrowRight className="ml-2 h-4 w-4" /></Link>
+          <Link href="/faculty/approved-projects">View Projects <ArrowRight className="ml-2 h-4 w-4" /></Link>
+        </Button>
+      </CardContent>
+    </Card>
+    <Card className="shadow-lg hover:shadow-xl transition-shadow">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Archive className="text-primary" /> MOOC Repository</CardTitle>
+        <CardDescription>Browse approved MOOCs for your coordinated semesters.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button asChild variant="outline">
+          <Link href="/faculty/mooc-repository">View MOOCs <ArrowRight className="ml-2 h-4 w-4" /></Link>
         </Button>
       </CardContent>
     </Card>
@@ -194,9 +193,8 @@ export default function DashboardPage() {
         <span className="text-sm text-muted-foreground">Welcome back, {user.name}!</span>
       </div>
       
-      {/* Announcements Alert removed from here */}
-      
       {renderDashboardContent()}
     </div>
   );
 }
+

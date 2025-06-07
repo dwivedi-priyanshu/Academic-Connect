@@ -2,8 +2,8 @@
 'use server';
 
 import { connectToDatabase } from '@/lib/mongodb';
-import { MOOCS_COLLECTION, PROJECTS_COLLECTION, STUDENT_PROFILES_COLLECTION, USERS_COLLECTION } from '@/lib/constants';
-import type { MiniProject, MoocCourse, SubmissionStatus, User, StudentProfile, MoocCourseWithStudentInfo } from '@/types';
+import { MOOCS_COLLECTION, PROJECTS_COLLECTION, STUDENT_PROFILES_COLLECTION, USERS_COLLECTION, MOOC_COORDINATOR_ASSIGNMENTS_COLLECTION } from '@/lib/constants';
+import type { MiniProject, MoocCourse, SubmissionStatus, User, StudentProfile, MoocCourseWithStudentInfo, MoocCoordinatorAssignment } from '@/types';
 import { ObjectId } from 'mongodb';
 import type { Collection, Filter } from 'mongodb';
 import { fetchMoocCoordinatorForSemesterAction } from './faculty-actions';
@@ -28,6 +28,11 @@ async function getStudentProfilesCollection(): Promise<Collection<StudentProfile
 async function getUsersCollection(): Promise<Collection<User>> {
   const { db } = await connectToDatabase();
   return db.collection<User>(USERS_COLLECTION);
+}
+
+async function getMoocCoordinatorAssignmentsCollection(): Promise<Collection<MoocCoordinatorAssignment>> {
+  const { db } = await connectToDatabase();
+  return db.collection<MoocCoordinatorAssignment>(MOOC_COORDINATOR_ASSIGNMENTS_COLLECTION);
 }
 
 
@@ -447,6 +452,48 @@ export async function updateSubmissionStatusAction(
       throw new Error(error.message || `Failed to update ${type} status.`);
     }
     throw new Error(`Failed to update ${type} status.`);
+  }
+}
+
+export async function fetchApprovedMoocsForCoordinatorAction(facultyId: string): Promise<MoocCourseWithStudentInfo[]> {
+  try {
+    const moocCoordAssignmentsCollection = await getMoocCoordinatorAssignmentsCollection();
+    const moocsCollection = await getMoocsCollection();
+    const studentProfilesCollection = await getStudentProfilesCollection();
+
+    // 1. Find semesters the faculty coordinates
+    const assignments = await moocCoordAssignmentsCollection.find({ facultyId }).toArray();
+    if (assignments.length === 0) {
+      return []; // Faculty does not coordinate any semesters
+    }
+    const coordinatedSemesters = assignments.map(a => a.semester);
+
+    // 2. Fetch approved MOOCs for those semesters
+    const approvedMoocsCursor = moocsCollection.find({
+      submissionSemester: { $in: coordinatedSemesters },
+      status: 'Approved'
+    });
+    const approvedMoocsArray = await approvedMoocsCursor.toArray();
+
+    // 3. Enrich with student details
+    const moocsWithStudentInfo: MoocCourseWithStudentInfo[] = [];
+    for (const moocDoc of approvedMoocsArray) {
+      const studentProfile = await studentProfilesCollection.findOne({ userId: moocDoc.studentId });
+      const idStr = moocDoc._id.toHexString();
+      const { _id, ...restOfMooc } = moocDoc;
+      moocsWithStudentInfo.push({
+        ...restOfMooc,
+        id: idStr,
+        _id: idStr,
+        studentName: studentProfile?.fullName || 'Unknown Student',
+        studentSemester: studentProfile?.currentSemester || moocDoc.submissionSemester, // Fallback to mooc submissionSemester if profile not found/currentSem not set
+      } as MoocCourseWithStudentInfo);
+    }
+    
+    return moocsWithStudentInfo.sort((a, b) => new Date(b.submittedDate).getTime() - new Date(a.submittedDate).getTime()); // Sort by newest first
+  } catch (error) {
+    console.error('Error fetching approved MOOCs for coordinator:', error);
+    throw new Error('Failed to fetch approved MOOCs for your coordinated semesters.');
   }
 }
 
