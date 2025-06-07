@@ -119,16 +119,15 @@ export default function ProfilePage() {
         toast({ title: "Profile Updated", description: "Your profile has been successfully updated.", variant: "default", className: "bg-success text-success-foreground" });
         setIsEditing(false);
         
-        // Re-fetch user data to update context if name/avatar changed
         const updatedUser = await fetchUserForSessionAction(user.id);
         if (updatedUser) {
             // The login function in AuthContext should handle updating the user object in context
             // This will ensure the header avatar/name updates.
-             // Forcing a re-evaluation in AuthContext by calling login with existing user,
-             // but AuthContext's login expects credentials.
-             // A dedicated context update function would be better.
-             // For now, we can just update the 'user' object in the context.
-             // This is a simplified approach for context update.
+            // Forcing a re-evaluation in AuthContext by calling login with existing user,
+            // but AuthContext's login expects credentials.
+            // A dedicated context update function would be better.
+            // For now, we can just update the 'user' object in the context.
+            // This is a simplified approach for context update.
             if (login && typeof login === 'function') {
                 // This is a placeholder for a proper context update method
                 // Attempting to reload the user data may be better
@@ -156,11 +155,11 @@ export default function ProfilePage() {
      return <p>User not found. Please log in.</p>;
   }
 
-  const studentAcademicFieldsNonEditable: string[] = ['admissionId', 'department', 'year', 'currentSemester', 'section'];
-
+  // studentEditable: true means student can edit this field on their own profile.
+  // studentEditable: false means student cannot edit this field on their own profile (view only or admin editable).
   const profileFieldsConfig = [
     // Account & Basic Info
-    { name: 'fullName', label: 'Full Name', icon: UserCircle, type: 'text', required: true, section: 'Account', studentEditable: user?.role !== 'Student' }, // Name editable by Faculty/Admin if they view their own profile this way
+    { name: 'fullName', label: 'Full Name', icon: UserCircle, type: 'text', required: true, section: 'Account', studentEditable: true }, // Name editable by all users for their own profile
     { name: 'admissionId', label: 'Admission ID (USN)', icon: Briefcase, type: 'text', required: true, section: 'Academic', studentEditable: false, disabled: true }, // Always disabled for student
     { name: 'department', label: 'Department', icon: Building, type: 'text', required: true, section: 'Academic', studentEditable: false },
     { name: 'year', label: 'Year of Study', icon: UsersIcon, type: 'number', required: true, section: 'Academic', min: 1, max: 4, studentEditable: false },
@@ -197,7 +196,6 @@ export default function ProfilePage() {
 
   const currentProfileIsStudent = user.role === 'Student' && profileData && 'userId' in profileData;
 
-  // Group fields by section
   const groupedFields = currentFieldsConfig.reduce((acc, field) => {
     const section = field.section || 'Other';
     if (!acc[section]) {
@@ -251,7 +249,7 @@ export default function ProfilePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold flex items-center"><UserCircle className="mr-2 h-8 w-8 text-primary" /> User Profile</h1>
-        { (user.role === 'Student' || user.role === 'Faculty' || user.role === 'Admin') && ( // Allow edit button for all roles for their own profile
+        { (user.role === 'Student' || user.role === 'Faculty' || user.role === 'Admin') && (
           <Button onClick={() => setIsEditing(!isEditing)} variant={isEditing ? "secondary" : "default"} disabled={isLoading}>
             {isEditing ? 'Cancel' : <><Edit className="mr-2 h-4 w-4" /> Edit Profile</>}
           </Button>
@@ -276,66 +274,79 @@ export default function ProfilePage() {
         </CardHeader>
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {Object.entries(groupedFields).map(([sectionTitle, fields]) => (
-              <div key={sectionTitle} className="mb-6">
-                <h3 className="text-xl font-semibold mb-4 text-primary border-b pb-2">{sectionTitle}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                  {fields.map(field => {
-                    const isFieldDisabledForStudent = currentProfileIsStudent && !field.studentEditable;
-                    const isFieldGenerallyDisabled = field.disabled || isLoading;
-                    const finalDisabledState = isEditing ? (isFieldGenerallyDisabled || isFieldDisabledForStudent) : true;
+            {Object.entries(groupedFields).map(([sectionTitle, fields]) => {
+              // For faculty/admin viewing their own profile, only show "Account" section
+              if (user.role !== 'Student' && sectionTitle !== 'Account') {
+                return null;
+              }
+              return (
+                <div key={sectionTitle} className="mb-6">
+                  <h3 className="text-xl font-semibold mb-4 text-primary border-b pb-2">{sectionTitle}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                    {fields.map(field => {
+                      // Determine if the field should be editable for the current user type and edit state
+                      let fieldIsActuallyEditable = isEditing;
+                      if (currentProfileIsStudent && !field.studentEditable) {
+                          fieldIsActuallyEditable = false; // Student cannot edit this field
+                      }
+                      if (!currentProfileIsStudent && field.name !== 'fullName') { // Faculty/Admin can only edit their own name
+                          fieldIsActuallyEditable = false;
+                      }
+                      
+                      const finalDisabledState = !fieldIsActuallyEditable || isLoading || field.disabled;
 
-                    return (
-                      <div key={field.name} className="space-y-1">
-                        <Label htmlFor={field.name} className="flex items-center text-sm font-medium text-muted-foreground">
-                          <field.icon className="mr-2 h-4 w-4" /> {field.label} {field.required && <span className="text-destructive ml-1">*</span>}
-                        </Label>
-                        {isEditing ? (
-                          field.type === 'select' && field.options ? (
-                            <Select
-                              name={field.name}
-                              value={(profileData as any)?.[field.name]?.toString() || ''}
-                              onValueChange={(value) => handleSelectChange(field.name, value)}
-                              disabled={finalDisabledState}
-                            >
-                              <SelectTrigger id={field.name} className="bg-background">
-                                <SelectValue placeholder={`Select ${field.label}`} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {field.options.map(option => (
-                                  <SelectItem key={option} value={option}>{field.name === 'currentSemester' ? `Semester ${option}` : option}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                      return (
+                        <div key={field.name} className="space-y-1">
+                          <Label htmlFor={field.name} className="flex items-center text-sm font-medium text-muted-foreground">
+                            <field.icon className="mr-2 h-4 w-4" /> {field.label} {field.required && fieldIsActuallyEditable && <span className="text-destructive ml-1">*</span>}
+                          </Label>
+                          {isEditing && fieldIsActuallyEditable ? (
+                            field.type === 'select' && field.options ? (
+                              <Select
+                                name={field.name}
+                                value={(profileData as any)?.[field.name]?.toString() || ''}
+                                onValueChange={(value) => handleSelectChange(field.name, value)}
+                                disabled={finalDisabledState}
+                              >
+                                <SelectTrigger id={field.name} className="bg-background">
+                                  <SelectValue placeholder={`Select ${field.label}`} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {field.options.map(option => (
+                                    <SelectItem key={option} value={option}>{field.name === 'currentSemester' ? `Semester ${option}` : option}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input
+                                id={field.name}
+                                name={field.name}
+                                type={field.type}
+                                value={(profileData as any)?.[field.name] || ''}
+                                onChange={handleInputChange}
+                                required={field.required && fieldIsActuallyEditable}
+                                min={field.min}
+                                max={field.max}
+                                disabled={finalDisabledState}
+                                className="bg-background"
+                              />
+                            )
                           ) : (
-                            <Input
-                              id={field.name}
-                              name={field.name}
-                              type={field.type}
-                              value={(profileData as any)?.[field.name] || ''}
-                              onChange={handleInputChange}
-                              required={field.required}
-                              min={field.min}
-                              max={field.max}
-                              disabled={finalDisabledState}
-                              className="bg-background"
-                            />
-                          )
-                        ) : (
-                          <p className="text-md p-2 border-b min-h-[40px] bg-muted/20 rounded-sm">
-                            {field.name === 'currentSemester' && (profileData as any)?.[field.name] ? `Semester ${(profileData as any)[field.name]}` :
-                              field.type === 'date' && (profileData as any)?.[field.name]
-                              ? new Date((profileData as any)[field.name]).toLocaleDateString()
-                              : (profileData as any)?.[field.name] || <span className="text-muted-foreground italic">N/A</span>
-                            }
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
+                            <p className="text-md p-2 border-b min-h-[40px] bg-muted/20 rounded-sm">
+                              {field.name === 'currentSemester' && (profileData as any)?.[field.name] ? `Semester ${(profileData as any)[field.name]}` :
+                                field.type === 'date' && (profileData as any)?.[field.name]
+                                ? new Date((profileData as any)[field.name]).toLocaleDateString()
+                                : (profileData as any)?.[field.name] || <span className="text-muted-foreground italic">N/A</span>
+                              }
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {isEditing && (
               <div className="flex justify-end pt-4 border-t mt-6">
                 <Button type="submit" disabled={isLoading} className="bg-primary hover:bg-primary/90">
@@ -349,5 +360,4 @@ export default function ProfilePage() {
     </div>
   );
 }
-
     
