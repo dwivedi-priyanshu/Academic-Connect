@@ -50,7 +50,7 @@ const navItems: NavItem[] = [
   { href: '/academics/major-project', label: 'Major Project', icon: Rocket, roles: ['Student'] },
   { href: '/academics/technical-seminar', label: 'Technical Seminar', icon: Presentation, roles: ['Student'] },
   // Faculty specific
-  { href: '/faculty/student-search', label: 'Student Search', icon: UserSearch, roles: ['Faculty'] }, // Changed
+  { href: '/faculty/student-search', label: 'Student Search', icon: UserSearch, roles: ['Faculty'] }, 
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
   { href: '/faculty/class-performance', label: 'Class Performance', icon: BarChart2, roles: ['Faculty'] },
   { href: '/faculty/approvals', label: 'Approvals', icon: CheckSquare, roles: ['Faculty'] },

@@ -16,7 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { fetchStudentsForFacultyAction } from '@/actions/profile-actions';
 import { useToast } from '@/hooks/use-toast';
 
-export default function StudentSearchPage() { // Renamed component
+export default function StudentSearchPage() { 
   const { user } = useAuth();
   const { toast } = useToast();
   const [allStudents, setAllStudents] = useState<StudentProfile[]>([]);

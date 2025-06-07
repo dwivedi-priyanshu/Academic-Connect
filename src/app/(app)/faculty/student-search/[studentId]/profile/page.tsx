@@ -19,7 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Percent } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Added missing import
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; 
 
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
@@ -121,8 +121,8 @@ export default function FacultyViewStudentDetailedProfilePage() {
   
   return (
     <div className="space-y-6">
-      <Button variant="outline" onClick={() => router.push('/faculty/student-search')} className="mb-4"> {/* Changed link */}
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Student Search {/* Changed label */}
+      <Button variant="outline" onClick={() => router.push('/faculty/student-search')} className="mb-4"> 
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Student Search 
       </Button>
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold flex items-center"><UserCircle className="mr-2 h-8 w-8 text-primary" /> Student Details</h1>
