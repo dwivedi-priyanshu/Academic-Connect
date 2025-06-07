@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -15,7 +16,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Home, LogOut, Menu, Settings, UserCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Logo } from '../core/Logo';
-import type { NavItem } from './AppSidebar'; // Import NavItem to use for mobile nav
+import type { NavItem } from './AppSidebar';
+import { usePathname } from 'next/navigation'; // Added for active link highlighting
+import { cn } from '@/lib/utils'; // Added for conditional class names
 
 interface AppHeaderProps {
   sidebarNavItems: NavItem[];
@@ -23,6 +26,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ sidebarNavItems }: AppHeaderProps) {
   const { user, logout } = useAuth();
+  const pathname = usePathname(); // Get current pathname
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
@@ -38,16 +42,22 @@ export function AppHeader({ sidebarNavItems }: AppHeaderProps) {
             <div className="mb-4">
               <Logo iconSize={24} textSize="text-xl" />
             </div>
-            {sidebarNavItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center gap-4 px-2.5 py-2 text-sidebar-foreground hover:text-sidebar-primary rounded-lg hover:bg-sidebar-accent"
-              >
-                <item.icon className="h-5 w-5" />
-                {item.label}
-              </Link>
-            ))}
+            {sidebarNavItems.map((item) => {
+              const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-4 px-2.5 py-2 text-sidebar-foreground hover:text-sidebar-primary rounded-lg hover:bg-sidebar-accent',
+                    isActive && 'bg-sidebar-accent text-sidebar-primary font-semibold' // Active state styling
+                  )}
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.label}
+                </Link>
+              );
+            })}
           </nav>
         </SheetContent>
       </Sheet>
