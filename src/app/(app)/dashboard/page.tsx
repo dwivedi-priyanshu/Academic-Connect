@@ -166,41 +166,42 @@ const FacultyDashboard = () => (
 );
 
 const AdminDashboard = () => (
-  <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-    <Card className="shadow-lg hover:shadow-xl transition-shadow">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><ShieldCheck className="text-primary" /> User Management</CardTitle>
-        <CardDescription>Manage roles and access for all users.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button asChild variant="outline">
-          <Link href="/admin/users">Manage Users <ArrowRight className="ml-2 h-4 w-4" /></Link>
-        </Button>
-      </CardContent>
-    </Card>
-    <Card className="shadow-lg hover:shadow-xl transition-shadow">
-        <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Settings2 className="text-primary" /> Assignments</CardTitle>
-            <CardDescription>Manage faculty-subject and MOOC coordinator assignments.</CardDescription>
-        </CardHeader>
-        <CardContent>
-            <Button asChild variant="outline">
-                <Link href="/admin/assignments">Manage Assignments <ArrowRight className="ml-2 h-4 w-4" /></Link>
-            </Button>
-        </CardContent>
-    </Card>
-    <Card className="shadow-lg hover:shadow-xl transition-shadow">
-        <CardHeader>
-            <CardTitle className="flex items-center gap-2"><BookCopy className="text-primary" /> Subject Management</CardTitle>
-            <CardDescription>Define and manage subjects for departments and semesters.</CardDescription>
-        </CardHeader>
-        <CardContent>
-            <Button asChild variant="outline">
-                <Link href="/admin/subject-management">Manage Subjects <ArrowRight className="ml-2 h-4 w-4" /></Link>
-            </Button>
-        </CardContent>
-    </Card>
-  </div>
+  // <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+  //   <Card className="shadow-lg hover:shadow-xl transition-shadow">
+  //     <CardHeader>
+  //       <CardTitle className="flex items-center gap-2"><ShieldCheck className="text-primary" /> User Management</CardTitle>
+  //       <CardDescription>Manage roles and access for all users.</CardDescription>
+  //     </CardHeader>
+  //     <CardContent>
+  //       <Button asChild variant="outline">
+  //         <Link href="/admin/users">Manage Users <ArrowRight className="ml-2 h-4 w-4" /></Link>
+  //       </Button>
+  //     </CardContent>
+  //   </Card>
+  //   <Card className="shadow-lg hover:shadow-xl transition-shadow">
+  //       <CardHeader>
+  //           <CardTitle className="flex items-center gap-2"><Settings2 className="text-primary" /> Assignments</CardTitle>
+  //           <CardDescription>Manage faculty-subject and MOOC coordinator assignments.</CardDescription>
+  //       </CardHeader>
+  //       <CardContent>
+  //           <Button asChild variant="outline">
+  //               <Link href="/admin/assignments">Manage Assignments <ArrowRight className="ml-2 h-4 w-4" /></Link>
+  //           </Button>
+  //       </CardContent>
+  //   </Card>
+  //   <Card className="shadow-lg hover:shadow-xl transition-shadow">
+  //       <CardHeader>
+  //           <CardTitle className="flex items-center gap-2"><BookCopy className="text-primary" /> Subject Management</CardTitle>
+  //           <CardDescription>Define and manage subjects for departments and semesters.</CardDescription>
+  //       </CardHeader>
+  //       <CardContent>
+  //           <Button asChild variant="outline">
+  //               <Link href="/admin/subject-management">Manage Subjects <ArrowRight className="ml-2 h-4 w-4" /></Link>
+  //           </Button>
+  //       </CardContent>
+  //   </Card>
+  // </div>
+  <p>Admin Dashboard Placeholder - Debugging compilation issue.</p>
 );
 
 
@@ -241,3 +242,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
