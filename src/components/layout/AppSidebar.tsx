@@ -22,9 +22,9 @@ import {
   UserSearch,
   Archive,
   BookCopy,
-  Briefcase, // Added for Internship
-  Rocket, // Added for Major Project
-  Presentation // Added for Technical Seminar
+  Briefcase, 
+  Rocket, 
+  Presentation
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
