@@ -17,7 +17,7 @@ const allNavItems: NavItem[] = [
   { href: '/academics/internship', label: 'My Internships', icon: Briefcase, roles: ['Student'] },
   { href: '/academics/major-project', label: 'Major Project', icon: Rocket, roles: ['Student'] },
   { href: '/academics/technical-seminar', label: 'Technical Seminar', icon: Presentation, roles: ['Student'] },
-  { href: '/faculty/student-lookup', label: 'Student Lookup', icon: UserSearch, roles: ['Faculty'] },
+  { href: '/faculty/student-search', label: 'Student Search', icon: UserSearch, roles: ['Faculty'] }, // Changed
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
   { href: '/faculty/class-performance', label: 'Class Performance', icon: BarChart2, roles: ['Faculty'] },
   { href: '/faculty/approvals', label: 'Approvals', icon: CheckSquare, roles: ['Faculty'] },

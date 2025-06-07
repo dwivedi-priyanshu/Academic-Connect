@@ -98,12 +98,12 @@ const FacultyDashboard = () => (
   <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
      <Card className="shadow-lg hover:shadow-xl transition-shadow">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><UserSearch className="text-primary" /> Student Lookup</CardTitle>
+        <CardTitle className="flex items-center gap-2"><UserSearch className="text-primary" /> Student Search</CardTitle> {/* Changed */}
         <CardDescription>Search and view detailed student profiles and marks.</CardDescription>
       </CardHeader>
       <CardContent>
         <Button asChild variant="outline">
-          <Link href="/faculty/student-lookup">Lookup Student <ArrowRight className="ml-2 h-4 w-4" /></Link>
+          <Link href="/faculty/student-search">Search Students <ArrowRight className="ml-2 h-4 w-4" /></Link> {/* Changed */}
         </Button>
       </CardContent>
     </Card>
