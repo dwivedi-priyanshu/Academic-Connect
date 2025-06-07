@@ -21,7 +21,10 @@ import {
   LibraryBig,
   UserSearch,
   Archive,
-  BookCopy // Added BookCopy icon
+  BookCopy,
+  Briefcase, // Added for Internship
+  Rocket, // Added for Major Project
+  Presentation // Added for Technical Seminar
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -41,8 +44,11 @@ const navItems: NavItem[] = [
   { href: '/profile', label: 'Profile', icon: UserCircle, roles: ['Student', 'Faculty', 'Admin'] }, 
   // Student specific
   { href: '/academics/marks', label: 'My Marks', icon: ClipboardList, roles: ['Student'] },
-  { href: '/academics/projects', label: 'My Projects', icon: FileText, roles: ['Student'] },
+  { href: '/academics/projects', label: 'My Mini-Projects', icon: FileText, roles: ['Student'] },
   { href: '/academics/moocs', label: 'My MOOCs', icon: BookOpen, roles: ['Student'] },
+  { href: '/academics/internship', label: 'My Internships', icon: Briefcase, roles: ['Student'] },
+  { href: '/academics/major-project', label: 'Major Project', icon: Rocket, roles: ['Student'] },
+  { href: '/academics/technical-seminar', label: 'Technical Seminar', icon: Presentation, roles: ['Student'] },
   // Faculty specific
   { href: '/faculty/student-lookup', label: 'Student Lookup', icon: UserSearch, roles: ['Faculty'] },
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },

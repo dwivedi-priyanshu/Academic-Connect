@@ -4,7 +4,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, BarChart2, Settings2, LibraryBig, UserSearch, Archive, BookCopy } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, BarChart2, Settings2, LibraryBig, UserSearch, Archive, BookCopy, Briefcase, Rocket, Presentation } from 'lucide-react';
 import Link from 'next/link';
 
 const StudentDashboard = () => {
@@ -35,12 +35,12 @@ const StudentDashboard = () => {
         </Card>
         <Card className="shadow-lg hover:shadow-xl transition-shadow">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><FileText className="text-primary" /> My Projects</CardTitle>
+            <CardTitle className="flex items-center gap-2"><FileText className="text-primary" /> My Mini-Projects</CardTitle>
             <CardDescription>Submit and track your mini-project progress.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline">
-              <Link href="/academics/projects">Manage Projects <ArrowRight className="ml-2 h-4 w-4" /></Link>
+              <Link href="/academics/projects">Manage Mini-Projects <ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
           </CardContent>
         </Card>
@@ -52,6 +52,39 @@ const StudentDashboard = () => {
           <CardContent>
             <Button asChild variant="outline">
               <Link href="/academics/moocs">Manage MOOCs <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className="shadow-lg hover:shadow-xl transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Briefcase className="text-primary" /> My Internships</CardTitle>
+            <CardDescription>Track your internship applications and progress.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link href="/academics/internship">Manage Internships <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className="shadow-lg hover:shadow-xl transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Rocket className="text-primary" /> Major Project</CardTitle>
+            <CardDescription>Manage your final year major project submissions.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link href="/academics/major-project">Manage Major Project <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className="shadow-lg hover:shadow-xl transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Presentation className="text-primary" /> Technical Seminar</CardTitle>
+            <CardDescription>Submit and track your technical seminar.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link href="/academics/technical-seminar">Manage Seminar <ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
           </CardContent>
         </Card>
