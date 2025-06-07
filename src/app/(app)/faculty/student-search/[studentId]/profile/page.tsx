@@ -4,15 +4,15 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import type { StudentProfile, SubjectMark } from '@/types';
-import { UserCircle, CalendarDays, Phone, MapPin, Building, Users as UsersIcon, Briefcase, ArrowLeft, ClipboardList, BookOpen, Droplet, Fingerprint, Tag, Flag, Award, Users2, ClipboardCheck, BarChart2, FileText as FileTextIcon, Download } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import type { StudentProfile, SubjectMark, MoocCourse, MiniProject, SubmissionStatus } from '@/types';
+import { UserCircle, CalendarDays, Phone, MapPin, Building, Users as UsersIcon, Briefcase, ArrowLeft, ClipboardList, BookOpen, Droplet, Fingerprint, Tag, Flag, Award, Users2, ClipboardCheck, BarChart2, FileText as FileTextIcon, Download, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { fetchStudentFullProfileDataAction } from '@/actions/profile-actions';
 import { fetchStudentMarksAction } from '@/actions/student-data-actions';
+import { fetchStudentMoocsAction, fetchStudentProjectsAction } from '@/actions/academic-submission-actions';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
@@ -20,6 +20,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Percent } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; 
+import { format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
 
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
@@ -38,6 +40,16 @@ export default function FacultyViewStudentDetailedProfilePage() {
   const [marksForSemester, setMarksForSemester] = useState<SubjectMark[]>([]);
   const [isLoadingMarks, setIsLoadingMarks] = useState(false);
 
+  const [allMoocs, setAllMoocs] = useState<MoocCourse[]>([]);
+  const [selectedMoocSemester, setSelectedMoocSemester] = useState<string>("");
+  const [filteredMoocs, setFilteredMoocs] = useState<MoocCourse[]>([]);
+  const [isLoadingMoocs, setIsLoadingMoocs] = useState(false);
+
+  const [allProjects, setAllProjects] = useState<MiniProject[]>([]);
+  const [selectedProjectSemester, setSelectedProjectSemester] = useState<string>("");
+  const [filteredProjects, setFilteredProjects] = useState<MiniProject[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+
 
   useEffect(() => {
     if (user && user.role === 'Faculty' && studentUserId) {
@@ -47,6 +59,8 @@ export default function FacultyViewStudentDetailedProfilePage() {
         if (data) {
             const currentSemStr = String(data.currentSemester);
             setSelectedMarksSemester(currentSemStr); 
+            setSelectedMoocSemester(currentSemStr);
+            setSelectedProjectSemester(currentSemStr);
         }
         setIsLoadingProfile(false);
       }).catch(err => {
@@ -54,6 +68,20 @@ export default function FacultyViewStudentDetailedProfilePage() {
         toast({title: "Error", description: "Could not load student profile.", variant: "destructive"});
         setIsLoadingProfile(false);
       });
+
+      // Fetch all MOOCs and Projects for the student
+      setIsLoadingMoocs(true);
+      fetchStudentMoocsAction(studentUserId)
+        .then(setAllMoocs)
+        .catch(err => toast({title: "Error", description: "Could not load student MOOCs.", variant: "destructive"}))
+        .finally(() => setIsLoadingMoocs(false));
+
+      setIsLoadingProjects(true);
+      fetchStudentProjectsAction(studentUserId)
+        .then(setAllProjects)
+        .catch(err => toast({title: "Error", description: "Could not load student projects.", variant: "destructive"}))
+        .finally(() => setIsLoadingProjects(false));
+
     } else {
       setIsLoadingProfile(false); 
     }
@@ -71,6 +99,44 @@ export default function FacultyViewStudentDetailedProfilePage() {
             .finally(() => setIsLoadingMarks(false));
     }
   }, [studentUserId, selectedMarksSemester, toast]);
+
+  useEffect(() => {
+    if (selectedMoocSemester) {
+      setFilteredMoocs(allMoocs.filter(mooc => mooc.submissionSemester === parseInt(selectedMoocSemester)));
+    }
+  }, [selectedMoocSemester, allMoocs]);
+
+  useEffect(() => {
+    if (selectedProjectSemester) {
+      setFilteredProjects(allProjects.filter(project => project.submissionSemester === parseInt(selectedProjectSemester)));
+    }
+  }, [selectedProjectSemester, allProjects]);
+
+
+  const StatusBadge = ({ status }: { status: SubmissionStatus }) => {
+    let IconComponent = Clock;
+    let variant: "default" | "secondary" | "destructive" | "outline" = "default";
+    let className = "";
+
+    if (status === 'Approved') {
+      IconComponent = CheckCircle;
+      variant = "default";
+      className = "bg-success text-success-foreground hover:bg-success/90";
+    } else if (status === 'Rejected') {
+      IconComponent = XCircle;
+      variant = "destructive";
+    } else {
+      IconComponent = Clock;
+      variant = "default";
+      className = "bg-warning text-warning-foreground hover:bg-warning/90";
+    }
+    return (
+      <Badge variant={variant} className={className}>
+        <IconComponent className="mr-1 h-3 w-3" />
+        {status}
+      </Badge>
+    );
+  };
 
 
   if (!user || user.role !== 'Faculty') {
@@ -144,9 +210,11 @@ export default function FacultyViewStudentDetailedProfilePage() {
         </CardHeader>
         <CardContent className="p-0">
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 rounded-none">
+            <TabsList className="grid w-full grid-cols-4 rounded-none">
               <TabsTrigger value="profile" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none">Profile</TabsTrigger>
               <TabsTrigger value="marks" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none">Marks</TabsTrigger>
+              <TabsTrigger value="moocs" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none">MOOCs</TabsTrigger>
+              <TabsTrigger value="projects" className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none">Mini-Projects</TabsTrigger>
             </TabsList>
             <TabsContent value="profile" className="p-6">
               <div className="space-y-6">
@@ -231,6 +299,95 @@ export default function FacultyViewStudentDetailedProfilePage() {
                     </div>
                 )}
             </TabsContent>
+            <TabsContent value="moocs" className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-semibold text-primary">MOOC Submissions - Semester {selectedMoocSemester}</h3>
+                    <div className="w-48">
+                        <Select value={selectedMoocSemester} onValueChange={setSelectedMoocSemester}>
+                            <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
+                            <SelectContent>
+                            {SEMESTERS.map(sem => (
+                                <SelectItem key={`mooc-sem-${sem}`} value={sem}>Semester {sem}</SelectItem>
+                            ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                 {isLoadingMoocs ? <Skeleton className="h-20 w-full" /> :
+                    filteredMoocs.length > 0 ? (
+                    <div className="space-y-4">
+                        {filteredMoocs.map(mooc => (
+                        <Card key={mooc.id} className="bg-muted/30">
+                            <CardHeader className="flex flex-row items-start justify-between pb-2">
+                                <CardTitle className="text-md">{mooc.courseName}</CardTitle>
+                                <StatusBadge status={mooc.status} />
+                            </CardHeader>
+                            <CardContent className="text-sm text-muted-foreground space-y-1 pb-3">
+                                <p><strong>Platform:</strong> {mooc.platform}</p>
+                                <p><strong>Duration:</strong> {format(new Date(mooc.startDate), "PP")} - {format(new Date(mooc.endDate), "PP")}</p>
+                                {mooc.creditsEarned != null && <p><strong>Credits:</strong> {mooc.creditsEarned}</p>}
+                                {mooc.certificateUrl && (
+                                <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline">
+                                    <a href={mooc.certificateUrl} target="_blank" rel="noopener noreferrer">
+                                        <Download className="mr-1 h-3 w-3"/> View Certificate
+                                    </a>
+                                </Button>
+                                )}
+                                {mooc.remarks && <p><strong>Faculty Remarks:</strong> {mooc.remarks}</p>}
+                            </CardContent>
+                        </Card>
+                        ))}
+                    </div>
+                    ) : <p className="text-center py-4 text-muted-foreground">No MOOCs submitted for this semester.</p>
+                }
+            </TabsContent>
+            <TabsContent value="projects" className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-semibold text-primary">Mini-Project Submissions - Semester {selectedProjectSemester}</h3>
+                    <div className="w-48">
+                        <Select value={selectedProjectSemester} onValueChange={setSelectedProjectSemester}>
+                            <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
+                            <SelectContent>
+                            {SEMESTERS.map(sem => (
+                                <SelectItem key={`proj-sem-${sem}`} value={sem}>Semester {sem}</SelectItem>
+                            ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                 {isLoadingProjects ? <Skeleton className="h-20 w-full" /> :
+                    filteredProjects.length > 0 ? (
+                    <div className="space-y-4">
+                        {filteredProjects.map(proj => (
+                        <Card key={proj.id} className="bg-muted/30">
+                            <CardHeader className="flex flex-row items-start justify-between pb-2">
+                                <CardTitle className="text-md">{proj.title}</CardTitle>
+                                <StatusBadge status={proj.status} />
+                            </CardHeader>
+                            <CardContent className="text-sm text-muted-foreground space-y-1 pb-3">
+                                <p><strong>Subject:</strong> {proj.subject}</p>
+                                <p><strong>Description:</strong> {proj.description}</p>
+                                {proj.guideId && <p><strong>Guide ID:</strong> {proj.guideId}</p>}
+                                <div className="flex gap-2 mt-1">
+                                    {proj.pptUrl && (
+                                        <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline">
+                                            <a href={proj.pptUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-1 h-3 w-3"/> View PPT</a>
+                                        </Button>
+                                    )}
+                                    {proj.reportUrl && (
+                                        <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline">
+                                            <a href={proj.reportUrl} target="_blank" rel="noopener noreferrer"><Download className="mr-1 h-3 w-3"/> View Report</a>
+                                        </Button>
+                                    )}
+                                </div>
+                                {proj.remarks && <p><strong>Faculty Remarks:</strong> {proj.remarks}</p>}
+                            </CardContent>
+                        </Card>
+                        ))}
+                    </div>
+                    ) : <p className="text-center py-4 text-muted-foreground">No projects submitted for this semester.</p>
+                }
+            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
@@ -273,3 +430,4 @@ const ProfilePageSkeleton = () => (
     </Card>
   </div>
 );
+

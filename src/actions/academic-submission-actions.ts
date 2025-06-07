@@ -81,6 +81,7 @@ export async function saveStudentMoocAction(formData: FormData, studentId: strin
       const fileBuffer = Buffer.from(await certificateFile.arrayBuffer());
       const originalFileName = certificateFile.name;
       const safeFileName = originalFileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      // For certificates (typically PDF), use 'raw'. Cloudinary will store it as is.
       const resourceTypeForCert = (certificateFile.type === 'application/pdf' || certificateFile.name.toLowerCase().endsWith('.pdf')) ? 'raw' : 'auto';
       certificateCloudUrl = await uploadStreamToCloudinary(fileBuffer, `mooc_certificates/${studentId}`, safeFileName, resourceTypeForCert);
     }
@@ -197,6 +198,7 @@ export async function saveStudentProjectAction(formData: FormData, studentId: st
         const fileBuffer = Buffer.from(await file.arrayBuffer());
         const originalFileName = file.name;
         const safeFileName = originalFileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+        // For project files (likely PDF for report, PPT/PDF for presentation), use 'raw' for PDF.
         const resourceType = (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) ? 'raw' : 'auto';
         return uploadStreamToCloudinary(fileBuffer, `project_files/${studentId}/${type}`, safeFileName, resourceType);
       }
