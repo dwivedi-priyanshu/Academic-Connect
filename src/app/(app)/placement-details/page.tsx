@@ -4,7 +4,7 @@
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import type { PlacementEntry } from '@/types';
-import { Award, Building, UploadCloud, PlusCircle, Edit2, Trash2, Download, DollarSign, CalendarDays } from 'lucide-react';
+import { Award, Building, UploadCloud, PlusCircle, Edit2, Trash2, Download, CalendarDays } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { fetchStudentPlacementsAction, saveStudentPlacementAction, deleteStudentPlacementAction } from '@/actions/placement-actions';
 import { Button } from '@/components/ui/button';
@@ -206,7 +206,9 @@ export default function PlacementDetailsPage() {
                             <Trash2 className="h-4 w-4 text-destructive"/>
                         </Button>
                     </div>
-                    <CardDescription className="flex items-center"><DollarSign className="mr-1 h-4 w-4 text-green-600"/>CTC: {placement.ctcOffered}</CardDescription>
+                    <CardDescription className="flex items-center">
+                        <span className="text-green-600 font-semibold text-lg mr-1">₹</span>CTC: {placement.ctcOffered}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="text-sm space-y-2">
                      <p className="flex items-center text-xs text-muted-foreground"><CalendarDays className="mr-2 h-3 w-3" />Added: {format(new Date(placement.submittedDate), "PPP")}</p>
