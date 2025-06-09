@@ -134,6 +134,32 @@ export interface StudentClassPerformanceDetails {
   marksBySubject: Record<string, SubjectMark | undefined>; 
 }
 
+// --- Placement Details Types ---
+export type OfferStatus = 'Offered' | 'Accepted' | 'Rejected' | 'Pending';
+
+export interface PlacementDrive {
+  _id?: any;
+  id: string;
+  companyName: string;
+  driveDate: string; // ISO Date string
+  role: string;
+  description?: string;
+  ctcRange?: string; // e.g., "10-12 LPA"
+}
+
+export interface PlacementOffer {
+  _id?: any;
+  id: string;
+  studentId: string;
+  driveId: string; // To link to PlacementDrive
+  companyName: string;
+  role: string;
+  ctcOffered: string; // e.g., "11.5 LPA"
+  offerDate: string; // ISO Date string
+  status: OfferStatus;
+  offerLetterUrl?: string; // Optional
+  remarks?: string; // Optional
+}
 
 export const MOCK_USER_STUDENT_DATA: Omit<User, 'id' | '_id' | 'status'> = {
   email: 'student@example.com',
