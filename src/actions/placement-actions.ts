@@ -1,96 +1,110 @@
 
 'use server';
 
-import type { PlacementDrive, PlacementOffer } from '@/types';
-import { format } from 'date-fns';
+import type { PlacementEntry } from '@/types';
+import { connectToDatabase } from '@/lib/mongodb';
+import { PLACEMENTS_COLLECTION } from '@/lib/constants';
+import type { Collection, Filter } from 'mongodb';
+import { ObjectId } from 'mongodb';
+import { uploadStreamToCloudinary } from '@/lib/cloudinary';
 
-// --- MOCK DATA ---
-const MOCK_PLACEMENT_DRIVES: PlacementDrive[] = [
-  {
-    id: 'drive1',
-    companyName: 'Tech Solutions Inc.',
-    driveDate: new Date(2024, 7, 15).toISOString(), // Aug 15, 2024
-    role: 'Software Engineer Trainee',
-    description: 'Hiring for fresh graduates for full-stack development roles. Eligibility: CSE/ISE, >7 CGPA.',
-    ctcRange: '6-8 LPA',
-  },
-  {
-    id: 'drive2',
-    companyName: 'Innovate Corp',
-    driveDate: new Date(2024, 8, 5).toISOString(), // Sep 5, 2024
-    role: 'Data Analyst Intern',
-    description: 'Internship opportunity for final year students. Strong analytical skills required.',
-    ctcRange: '25-30k/month stipend',
-  },
-  {
-    id: 'drive3',
-    companyName: 'Global Connect Ltd.',
-    driveDate: new Date(2024, 6, 20).toISOString(), // July 20, 2024
-    role: 'Associate Consultant',
-    description: 'Drive for all branches. Good communication and problem-solving skills needed.',
-    ctcRange: '5-7 LPA',
-  },
-];
-
-const MOCK_PLACEMENT_OFFERS: PlacementOffer[] = [
-  {
-    id: 'offer1',
-    studentId: 'teststudent-id', // Assuming a test student ID, replace with actual logic
-    driveId: 'drive1',
-    companyName: 'Tech Solutions Inc.',
-    role: 'Software Engineer Trainee',
-    ctcOffered: '7.5 LPA',
-    offerDate: new Date(2024, 7, 25).toISOString(), // Aug 25, 2024
-    status: 'Accepted',
-    offerLetterUrl: 'https://placehold.co/800x1100.pdf?text=Offer+Letter+Tech+Solutions',
-    remarks: 'Successfully cleared all rounds.',
-  },
-  {
-    id: 'offer2',
-    studentId: 'teststudent-id',
-    driveId: 'drive3',
-    companyName: 'Global Connect Ltd.',
-    role: 'Associate Consultant',
-    ctcOffered: '6 LPA',
-    offerDate: new Date(2024, 6, 30).toISOString(), // July 30, 2024
-    status: 'Offered',
-    remarks: 'Awaiting student decision.',
-  },
-];
-
-// --- Placeholder Server Actions ---
-
-export async function fetchStudentPlacementDrivesAction(studentId: string): Promise<PlacementDrive[]> {
-  console.log(`[PlacementAction] Fetching placement drives for student: ${studentId}`);
-  // In a real app, you would filter drives the student participated in.
-  // For now, returning all mock drives.
-  await new Promise(resolve => setTimeout(resolve, 700)); // Simulate network delay
-  return MOCK_PLACEMENT_DRIVES.map(drive => ({
-      ...drive,
-      driveDate: format(new Date(drive.driveDate), 'PPP') // Format date for display
-  }));
+async function getPlacementsCollection(): Promise<Collection<PlacementEntry>> {
+  const { db } = await connectToDatabase();
+  return db.collection<PlacementEntry>(PLACEMENTS_COLLECTION);
 }
 
-export async function fetchStudentPlacementOffersAction(studentId: string): Promise<PlacementOffer[]> {
-  console.log(`[PlacementAction] Fetching placement offers for student: ${studentId}`);
-  // Filter mock offers by studentId (or use a specific student's mock offers)
-  const studentOffers = MOCK_PLACEMENT_OFFERS.filter(offer => offer.studentId === studentId || offer.studentId === 'teststudent-id');
-  await new Promise(resolve => setTimeout(resolve, 700)); // Simulate network delay
-  return studentOffers.map(offer => ({
-      ...offer,
-      offerDate: format(new Date(offer.offerDate), 'PPP') // Format date for display
-  }));
-}
-
-// Placeholder for submitting/updating offer status by student
-export async function updatePlacementOfferStatusAction(offerId: string, newStatus: 'Accepted' | 'Rejected'): Promise<boolean> {
-  console.log(`[PlacementAction] Student updating offer ${offerId} to status ${newStatus}`);
-  // In a real app, find the offer by ID and update its status in the database.
-  const offerIndex = MOCK_PLACEMENT_OFFERS.findIndex(o => o.id === offerId);
-  if (offerIndex !== -1) {
-    MOCK_PLACEMENT_OFFERS[offerIndex].status = newStatus;
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return true;
+export async function fetchStudentPlacementsAction(studentId: string): Promise<PlacementEntry[]> {
+  try {
+    const placementsCollection = await getPlacementsCollection();
+    const query: Filter<PlacementEntry> = { studentId };
+    const placementsCursor = placementsCollection.find(query).sort({ submittedDate: -1 }); // Sort by newest first
+    const placementsArray = await placementsCursor.toArray();
+    return placementsArray.map(placement => {
+        const idStr = placement._id.toHexString();
+        const { _id, ...rest } = placement;
+        return { ...rest, id: idStr, _id: idStr } as PlacementEntry;
+    });
+  } catch (error) {
+    console.error('Error fetching student placements:', error);
+    throw new Error('Failed to fetch placement entries.');
   }
-  return false;
+}
+
+export async function saveStudentPlacementAction(formData: FormData, studentId: string): Promise<PlacementEntry> {
+  try {
+    const placementsCollection = await getPlacementsCollection();
+    let savedPlacement: PlacementEntry;
+
+    const id = formData.get('id') as string | undefined;
+    const companyName = formData.get('companyName') as string;
+    const ctcOffered = formData.get('ctcOffered') as string;
+    let existingOfferLetterUrl = formData.get('existingOfferLetterUrl') as string | undefined;
+
+    if (existingOfferLetterUrl === 'undefined' || existingOfferLetterUrl === 'null') {
+        existingOfferLetterUrl = undefined;
+    }
+
+    const offerLetterFile = formData.get('offerLetterFile') as File | null;
+    let offerLetterCloudUrl: string | undefined = existingOfferLetterUrl;
+
+    if (offerLetterFile && offerLetterFile.size > 0) {
+      const fileBuffer = Buffer.from(await offerLetterFile.arrayBuffer());
+      const originalFileName = offerLetterFile.name;
+      const safeFileName = originalFileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const safeCompanyName = companyName.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const resourceTypeForOfferLetter = (offerLetterFile.type === 'application/pdf' || offerLetterFile.name.toLowerCase().endsWith('.pdf')) ? 'raw' : 'auto';
+      offerLetterCloudUrl = await uploadStreamToCloudinary(fileBuffer, `placement_offers/${studentId}/${safeCompanyName}`, safeFileName, resourceTypeForOfferLetter);
+    }
+
+    const placementData: Omit<PlacementEntry, 'id' | '_id' | 'submittedDate'> & { studentId: string; offerLetterUrl?: string } = {
+      studentId,
+      companyName,
+      ctcOffered,
+      offerLetterUrl: offerLetterCloudUrl,
+    };
+
+    if (id && id !== 'new') {
+      const dataToUpdate = { ...placementData };
+      delete (dataToUpdate as any).studentId; 
+      delete (dataToUpdate as any).submittedDate;
+
+      const result = await placementsCollection.findOneAndUpdate(
+        { _id: new ObjectId(id), studentId },
+        { $set: dataToUpdate },
+        { returnDocument: 'after' }
+      );
+      if (!result) throw new Error('Placement entry not found or access denied.');
+      const updatedDoc = result as PlacementEntry; 
+      const idStr = updatedDoc._id.toHexString();
+      const { _id, ...rest } = updatedDoc;
+      savedPlacement = { ...rest, id: idStr, _id: idStr } as PlacementEntry;
+    } else {
+      const newPlacementInternal: Omit<PlacementEntry, 'id' | '_id'> = {
+        ...placementData,
+        submittedDate: new Date().toISOString(),
+      };
+      const result = await placementsCollection.insertOne(newPlacementInternal as PlacementEntry);
+      const insertedIdStr = result.insertedId.toHexString();
+      savedPlacement = { ...newPlacementInternal, id: insertedIdStr, _id: insertedIdStr } as PlacementEntry;
+    }
+    return savedPlacement;
+  } catch (error) {
+    console.error('Error saving placement entry:', error); 
+    let errorMessage = 'Failed to save placement entry.';
+    if (error instanceof Error && error.message) {
+      errorMessage += ` Details: ${error.message}`;
+    }
+    throw new Error(errorMessage); 
+  }
+}
+
+export async function deleteStudentPlacementAction(placementId: string, studentId: string): Promise<boolean> {
+  try {
+    const placementsCollection = await getPlacementsCollection();
+    const result = await placementsCollection.deleteOne({ _id: new ObjectId(placementId), studentId });
+    return result.deletedCount === 1;
+  } catch (error) {
+    console.error('Error deleting placement entry:', error);
+    throw new Error('Failed to delete placement entry.');
+  }
 }

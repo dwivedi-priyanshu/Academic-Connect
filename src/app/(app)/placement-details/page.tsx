@@ -1,267 +1,237 @@
 
 'use client';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import type { PlacementDrive, PlacementOffer, OfferStatus } from '@/types';
-import { Award, Building, CalendarDays, FileText, Info, Briefcase, CheckCircle, XCircle, Clock, Download } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import type { PlacementEntry } from '@/types';
+import { Award, Building, UploadCloud, PlusCircle, Edit2, Trash2, Download, DollarSign, CalendarDays } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { fetchStudentPlacementDrivesAction, fetchStudentPlacementOffersAction, updatePlacementOfferStatusAction } from '@/actions/placement-actions';
+import { fetchStudentPlacementsAction, saveStudentPlacementAction, deleteStudentPlacementAction } from '@/actions/placement-actions';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { FileUploadInput } from '@/components/core/FileUploadInput';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import { format } from 'date-fns';
 
-const StatusBadge = ({ status }: { status: OfferStatus }) => {
-  let IconComponent = Clock;
-  let variant: "default" | "secondary" | "destructive" | "outline" = "default";
-  let className = "capitalize";
-
-  switch (status) {
-    case 'Accepted':
-      IconComponent = CheckCircle;
-      className = "bg-success text-success-foreground hover:bg-success/90 capitalize";
-      break;
-    case 'Rejected':
-      IconComponent = XCircle;
-      variant = "destructive";
-      className = "capitalize";
-      break;
-    case 'Offered':
-      IconComponent = Briefcase;
-      variant = "default";
-      className = "bg-blue-500 text-white hover:bg-blue-600 capitalize";
-      break;
-    case 'Pending':
-      IconComponent = Clock;
-      variant = "outline";
-      className = "capitalize";
-      break;
-    default:
-      IconComponent = Info;
-  }
-  return (
-    <Badge variant={variant} className={className}>
-      <IconComponent className="mr-1 h-3 w-3" />
-      {status}
-    </Badge>
-  );
+const initialPlacementState: Omit<PlacementEntry, '_id' | 'submittedDate' | 'offerLetterUrl'> & {id?: string, offerLetterUrl?: string | undefined} = {
+  studentId: '', companyName: '', ctcOffered: '', offerLetterUrl: undefined
 };
-
 
 export default function PlacementDetailsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [drives, setDrives] = useState<PlacementDrive[]>([]);
-  const [offers, setOffers] = useState<PlacementOffer[]>([]);
-  const [isLoadingDrives, setIsLoadingDrives] = useState(true);
-  const [isLoadingOffers, setIsLoadingOffers] = useState(true);
+  const [placements, setPlacements] = useState<PlacementEntry[]>([]);
+  const [currentPlacement, setCurrentPlacement] = useState<Omit<PlacementEntry, '_id' | 'submittedDate' | 'offerLetterUrl'> & {id?: string; offerLetterUrl?: string | undefined}>(initialPlacementState);
+  const [isFormVisible, setIsFormVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [offerLetterFile, setOfferLetterFile] = useState<File | null>(null);
 
-  const loadPlacementData = async () => {
+  const loadPlacements = async () => {
     if (!user) return;
-    setIsLoadingDrives(true);
-    setIsLoadingOffers(true);
+    setIsLoading(true);
     try {
-      const [drivesData, offersData] = await Promise.all([
-        fetchStudentPlacementDrivesAction(user.id),
-        fetchStudentPlacementOffersAction(user.id)
-      ]);
-      setDrives(drivesData);
-      setOffers(offersData);
+      const data = await fetchStudentPlacementsAction(user.id);
+      setPlacements(data);
     } catch (error) {
       console.error("Failed to load placement data:", error);
-      toast({ title: "Error", description: "Could not load placement details.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not load your placement entries.", variant: "destructive" });
     } finally {
-      setIsLoadingDrives(false);
-      setIsLoadingOffers(false);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     if (user && user.role === 'Student') {
-      loadPlacementData();
+      loadPlacements();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const handleUpdateOffer = async (offerId: string, newStatus: 'Accepted' | 'Rejected') => {
-    try {
-        const success = await updatePlacementOfferStatusAction(offerId, newStatus);
-        if (success) {
-            toast({title: "Offer Updated", description: `Your response has been recorded.`, className: "bg-success text-success-foreground"});
-            loadPlacementData(); // Refresh data
-        } else {
-            toast({title: "Update Failed", description: "Could not update offer status.", variant: "destructive"});
-        }
-    } catch (error) {
-        toast({title: "Error", description: "An error occurred while updating the offer.", variant: "destructive"});
-    }
-  }
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setCurrentPlacement(prev => ({ ...prev, [name]: value }));
+  };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !currentPlacement.companyName || !currentPlacement.ctcOffered) {
+        toast({ title: "Missing Information", description: "Company Name and CTC Offered are required.", variant: "destructive"});
+        return;
+    }
+    setIsSubmitting(true);
+
+    const formData = new FormData();
+    formData.append('id', currentPlacement.id || 'new');
+    formData.append('companyName', currentPlacement.companyName);
+    formData.append('ctcOffered', currentPlacement.ctcOffered);
+    if (currentPlacement.offerLetterUrl) {
+        formData.append('existingOfferLetterUrl', currentPlacement.offerLetterUrl);
+    }
+    if (offerLetterFile) {
+      formData.append('offerLetterFile', offerLetterFile);
+    }
+
+    try {
+      const savedPlacement = await saveStudentPlacementAction(formData, user.id);
+      
+      const isNew = !currentPlacement.id || currentPlacement.id === 'new';
+      setPlacements(prev => {
+        if (isNew) {
+            return [savedPlacement, ...prev]; // Add new to top
+        }
+        return prev.map(p => p.id === savedPlacement.id ? savedPlacement : p);
+      });
+
+      toast({ title: isNew ? "Placement Entry Added" : "Placement Entry Updated", description: `Details for ${savedPlacement.companyName} have been ${isNew ? 'added' : 'updated'}.`, className: "bg-success text-success-foreground" });
+
+      setCurrentPlacement({ ...initialPlacementState, studentId: user.id });
+      setOfferLetterFile(null);
+      setIsFormVisible(false);
+    } catch (error) {
+      console.error("Error submitting placement:", error);
+      toast({ title: "Submission Error", description: (error as Error).message || "Could not submit placement entry.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEdit = (placement: PlacementEntry) => {
+    setCurrentPlacement({ ...placement });
+    setOfferLetterFile(null);
+    setIsFormVisible(true);
+  };
+
+  const handleDelete = async (placement: PlacementEntry) => {
+    if (!user) return;
+    if (!confirm(`Are you sure you want to delete the placement entry for ${placement.companyName}? This action cannot be undone.`)) return;
+
+    setIsSubmitting(true); // Use isSubmitting to disable buttons during delete
+    try {
+      await deleteStudentPlacementAction(placement.id, user.id);
+      setPlacements(prev => prev.filter(p => p.id !== placement.id));
+      toast({ title: "Placement Entry Deleted", description: `The entry for ${placement.companyName} has been deleted.`, variant: "destructive" });
+    } catch (error) {
+      console.error("Error deleting placement:", error);
+      toast({ title: "Deletion Error", description: (error as Error).message || "Could not delete placement entry.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const toggleFormVisibility = () => {
+    setIsFormVisible(!isFormVisible);
+    if (!isFormVisible && user) {
+      setCurrentPlacement({ ...initialPlacementState, studentId: user.id });
+      setOfferLetterFile(null);
+    }
+  };
 
   if (!user || user.role !== 'Student') {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
         <Award className="w-16 h-16 mb-4" />
-        <p>This page is for students to view their placement details.</p>
-        <p>If you are a student, please ensure you are logged in correctly.</p>
+        <p>This page is for students to manage their placement details.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold flex items-center">
-          <Award className="mr-2 h-8 w-8 text-primary" /> My Placement Details
+          <Award className="mr-2 h-8 w-8 text-primary" /> My Placements
         </h1>
+        <Button onClick={toggleFormVisibility} disabled={isLoading || isSubmitting}>
+          <PlusCircle className="mr-2 h-4 w-4" /> {isFormVisible ? 'Close Form' : 'Add Placement'}
+        </Button>
       </div>
 
-      {/* Placement Offers Section */}
+      {isFormVisible && (
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle>{currentPlacement.id && currentPlacement.id !== 'new' ? 'Edit Placement Entry' : 'Add New Placement Entry'}</CardTitle>
+            <CardDescription>
+              Enter the company name, CTC offered, and optionally upload the offer letter (PDF).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="companyName">Company Name</Label>
+                  <Input id="companyName" name="companyName" value={currentPlacement.companyName} onChange={handleInputChange} required className="bg-background" disabled={isSubmitting}/>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="ctcOffered">CTC Offered (e.g., 12 LPA, 60k/month)</Label>
+                  <Input id="ctcOffered" name="ctcOffered" value={currentPlacement.ctcOffered} onChange={handleInputChange} required className="bg-background" disabled={isSubmitting}/>
+                </div>
+              </div>
+              <FileUploadInput
+                id="offerLetterFile"
+                label="Upload Offer Letter (PDF)"
+                onFileChange={setOfferLetterFile}
+                accept=".pdf"
+                currentFile={currentPlacement.offerLetterUrl}
+                disabled={isSubmitting}
+              />
+              <Button type="submit" disabled={isSubmitting} className="w-full md:w-auto">
+                <UploadCloud className="mr-2 h-4 w-4" /> {isSubmitting ? 'Processing...' : (currentPlacement.id && currentPlacement.id !== 'new' ? 'Update Entry' : 'Add Entry')}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>My Placement Offers</CardTitle>
-          <CardDescription>
-            Details of job offers you have received through campus placements.
-          </CardDescription>
+          <CardTitle>My Placement Records</CardTitle>
+          <CardDescription>List of your recorded placements.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoadingOffers ? (
+          {isLoading ? (
             <div className="space-y-4">
-              {[...Array(2)].map((_, i) => <Skeleton key={`offer-skel-${i}`} className="h-24 w-full rounded-md" />)}
+              {[...Array(2)].map((_, i) => <Skeleton key={`placement-skel-${i}`} className="h-28 w-full rounded-md" />)}
             </div>
-          ) : offers.length > 0 ? (
+          ) : placements.length > 0 ? (
             <div className="space-y-4">
-              {offers.map(offer => (
-                <Card key={offer.id} className="bg-muted/30">
-                  <CardHeader className="flex flex-row items-start justify-between pb-3">
-                    <div>
-                      <CardTitle className="text-xl">{offer.companyName}</CardTitle>
-                      <CardDescription>{offer.role} - <span className="font-semibold text-primary">{offer.ctcOffered}</span></CardDescription>
-                    </div>
-                    <StatusBadge status={offer.status} />
-                  </CardHeader>
-                  <CardContent className="text-sm space-y-1">
-                    <p className="flex items-center"><CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />Offer Date: {offer.offerDate}</p>
-                    {offer.remarks && <p className="flex items-start"><Info className="mr-2 h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />Remarks: {offer.remarks}</p>}
-                     {offer.offerLetterUrl && (
-                        <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline">
-                            <a href={offer.offerLetterUrl} target="_blank" rel="noopener noreferrer">
-                                <Download className="mr-1 h-3 w-3"/> View Offer Letter (Sample)
-                            </a>
-                        </Button>
-                     )}
-                  </CardContent>
-                  {offer.status === 'Offered' && (
-                    <CardContent className="pt-2 flex justify-end gap-2">
-                       <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                           <Button size="sm" className="bg-success hover:bg-success/90 text-success-foreground">
-                                <CheckCircle className="mr-1 h-4 w-4"/> Accept Offer
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                            <AlertDialogTitle>Accept Offer: {offer.companyName}?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                Are you sure you want to accept this offer for the role of {offer.role} with CTC {offer.ctcOffered}? This action may be final.
-                            </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleUpdateOffer(offer.id, 'Accepted')} className="bg-success hover:bg-success/80 text-success-foreground">
-                                Yes, Accept Offer
-                            </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                        </AlertDialog>
-
-                        <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button variant="destructive" size="sm">
-                                <XCircle className="mr-1 h-4 w-4"/> Reject Offer
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                            <AlertDialogTitle>Reject Offer: {offer.companyName}?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                Are you sure you want to reject this offer for the role of {offer.role}? Please consider your decision carefully.
-                            </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleUpdateOffer(offer.id, 'Rejected')} className="bg-destructive hover:bg-destructive/80 text-destructive-foreground">
-                                Yes, Reject Offer
-                            </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                        </AlertDialog>
-                    </CardContent>
-                  )}
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertTitle>No Offers Yet</AlertTitle>
-              <AlertDescription>
-                You currently have no placement offers recorded. Keep an eye on upcoming drives!
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Placement Drives Section */}
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle>Campus Placement Drives</CardTitle>
-          <CardDescription>
-            Information about placement drives you are eligible for or have participated in.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoadingDrives ? (
-             <div className="space-y-4">
-              {[...Array(3)].map((_, i) => <Skeleton key={`drive-skel-${i}`} className="h-20 w-full rounded-md" />)}
-            </div>
-          ) : drives.length > 0 ? (
-            <div className="space-y-4">
-              {drives.map(drive => (
-                <Card key={drive.id} className="bg-muted/30">
+              {placements.map(placement => (
+                <Card key={placement.id} className="bg-muted/30">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center"><Building className="mr-2 h-5 w-5 text-primary" />{drive.companyName}</CardTitle>
-                    <CardDescription>{drive.role} - Target CTC: <span className="font-medium">{drive.ctcRange || 'Not Specified'}</span></CardDescription>
+                    <div className="flex justify-between items-start">
+                        <CardTitle className="text-xl flex items-center"><Building className="mr-2 h-5 w-5 text-primary"/>{placement.companyName}</CardTitle>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(placement)} disabled={isSubmitting}>
+                            <Trash2 className="h-4 w-4 text-destructive"/>
+                        </Button>
+                    </div>
+                    <CardDescription className="flex items-center"><DollarSign className="mr-1 h-4 w-4 text-green-600"/>CTC: {placement.ctcOffered}</CardDescription>
                   </CardHeader>
-                  <CardContent className="text-sm space-y-1">
-                    <p className="flex items-center"><CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />Drive Date: {drive.driveDate}</p>
-                    {drive.description && <p className="flex items-start"><FileText className="mr-2 h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />Description: {drive.description}</p>}
+                  <CardContent className="text-sm space-y-2">
+                     <p className="flex items-center text-xs text-muted-foreground"><CalendarDays className="mr-2 h-3 w-3" />Added: {format(new Date(placement.submittedDate), "PPP")}</p>
+                    {placement.offerLetterUrl ? (
+                      <Button variant="link" size="sm" asChild className="p-0 h-auto text-primary hover:underline">
+                        <a href={placement.offerLetterUrl} target="_blank" rel="noopener noreferrer">
+                          <Download className="mr-1 h-3 w-3"/> View Offer Letter
+                        </a>
+                      </Button>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic">No offer letter uploaded.</p>
+                    )}
                   </CardContent>
+                  <CardFooter className="flex justify-end pt-2 pb-3 px-6">
+                     <Button variant="outline" size="sm" onClick={() => handleEdit(placement)} disabled={isSubmitting}>
+                        <Edit2 className="mr-1 h-3 w-3" /> Edit / Upload Letter
+                    </Button>
+                  </CardFooter>
                 </Card>
               ))}
             </div>
           ) : (
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertTitle>No Drives Information</AlertTitle>
-              <AlertDescription>
-                There are currently no placement drives listed that you have participated in or are eligible for.
-              </AlertDescription>
-            </Alert>
+            <p className="text-center py-8 text-muted-foreground">
+              You have not added any placement entries yet.
+            </p>
           )}
         </CardContent>
       </Card>

@@ -8,6 +8,7 @@ export const MOOCS_COLLECTION = "moocs";
 export const FACULTY_SUBJECT_ASSIGNMENTS_COLLECTION = "faculty_subject_assignments";
 export const MOOC_COORDINATOR_ASSIGNMENTS_COLLECTION = "mooc_coordinator_assignments";
 export const SUBJECTS_COLLECTION = "subjects"; // New collection for subjects
+export const PLACEMENTS_COLLECTION = "placements"; // New collection for placement entries
 
 
 export const mapMongoId = <T extends { _id: any }>(doc: T): Omit<T, '_id'> & { id: string } => {
