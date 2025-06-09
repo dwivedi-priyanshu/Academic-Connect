@@ -5,7 +5,7 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { AppSidebar, type NavItem } from '@/components/layout/AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { GraduationCap, LayoutDashboard, UserCircle, ClipboardList, FileText, BookOpen, Users, Edit3, CheckSquare, ShieldCheck, BarChart2, Settings2, LibraryBig, UserSearch, Archive, BookCopy, Briefcase, Rocket, Presentation } from 'lucide-react';
+import { GraduationCap, LayoutDashboard, UserCircle, ClipboardList, FileText, BookOpen, Users, Edit3, CheckSquare, ShieldCheck, BarChart2, Settings2, LibraryBig, UserSearch, Archive, BookCopy, Briefcase, Rocket, Presentation, Award } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const allNavItems: NavItem[] = [
@@ -17,6 +17,7 @@ const allNavItems: NavItem[] = [
   { href: '/academics/internship', label: 'My Internships', icon: Briefcase, roles: ['Student'] },
   { href: '/academics/major-project', label: 'Major Project', icon: Rocket, roles: ['Student'] },
   { href: '/academics/technical-seminar', label: 'Technical Seminar', icon: Presentation, roles: ['Student'] },
+  { href: '/placement-details', label: 'Placement Details', icon: Award, roles: ['Student'] },
   { href: '/faculty/student-search', label: 'Student Search', icon: UserSearch, roles: ['Faculty'] },
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
   { href: '/faculty/class-performance', label: 'Class Performance', icon: BarChart2, roles: ['Faculty'] },

@@ -24,7 +24,8 @@ import {
   BookCopy,
   Briefcase, 
   Rocket, 
-  Presentation
+  Presentation,
+  Award
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -49,6 +50,7 @@ const navItems: NavItem[] = [
   { href: '/academics/internship', label: 'My Internships', icon: Briefcase, roles: ['Student'] },
   { href: '/academics/major-project', label: 'Major Project', icon: Rocket, roles: ['Student'] },
   { href: '/academics/technical-seminar', label: 'Technical Seminar', icon: Presentation, roles: ['Student'] },
+  { href: '/placement-details', label: 'Placement Details', icon: Award, roles: ['Student'] },
   // Faculty specific
   { href: '/faculty/student-search', label: 'Student Search', icon: UserSearch, roles: ['Faculty'] }, 
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
