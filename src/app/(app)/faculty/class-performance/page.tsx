@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
 import type { StudentClassPerformanceDetails, SubjectMark, Subject } from '@/types'; // Added Subject type
-import { BarChart2, Info, Users, Percent, TrendingUp, TrendingDown, CheckSquare, XSquare, Building } from 'lucide-react';
+import { BarChart2, Info, Users, Percent, TrendingUp, TrendingDown, CheckSquare, XSquare, Building, UserX, BadgePercent } from 'lucide-react'; // Added UserX for absent, BadgePercent for Pass %
 import { useState, useEffect, useMemo } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { fetchAllMarksForClassAction } from '@/actions/marks-actions';
@@ -25,6 +25,8 @@ interface SubjectPerformanceSummary {
   passedCount: number;
   failedCount: number;
   marksEnteredCount: number;
+  absentCount: number;
+  passPercentage: string;
 }
 
 export default function ClassPerformancePage() {
@@ -94,23 +96,43 @@ export default function ClassPerformancePage() {
     if (classPerformanceData.length === 0 || subjectsForSelectedSemester.length === 0) {
       return summary;
     }
+    
+    const totalStudentsInClass = classPerformanceData.length;
 
     subjectsForSelectedSemester.forEach(subject => {
-      summary[subject.subjectCode] = { passedCount: 0, failedCount: 0, marksEnteredCount: 0 };
+      let passedCount = 0;
+      let failedCount = 0;
+      let marksEnteredCount = 0;
+      
       classPerformanceData.forEach(studentData => {
         const mark = studentData.marksBySubject[subject.subjectCode];
-        if (mark && (typeof mark.ia1_50 === 'number' || typeof mark.ia2_50 === 'number')) {
-            summary[subject.subjectCode].marksEnteredCount++;
-            const ia1 = typeof mark.ia1_50 === 'number' ? mark.ia1_50 : 0;
-            const ia2 = typeof mark.ia2_50 === 'number' ? mark.ia2_50 : 0;
+        const ia1Present = typeof mark?.ia1_50 === 'number';
+        const ia2Present = typeof mark?.ia2_50 === 'number';
+
+        if (ia1Present || ia2Present) { // Student is considered to have appeared if at least one IA mark is present
+            marksEnteredCount++;
+            const ia1 = mark?.ia1_50 ?? 0;
+            const ia2 = mark?.ia2_50 ?? 0;
             const totalIA = ia1 + ia2;
-            if (totalIA >= 20) { 
-                summary[subject.subjectCode].passedCount++;
+            if (totalIA >= 20) { // Assuming passing threshold for IAs total is 20
+                passedCount++;
             } else {
-                summary[subject.subjectCode].failedCount++;
+                failedCount++;
             }
         }
       });
+      
+      const absentCount = totalStudentsInClass - marksEnteredCount;
+      const totalAppeared = marksEnteredCount;
+      const passPercentage = totalAppeared > 0 ? ((passedCount / totalAppeared) * 100).toFixed(1) + '%' : 'N/A';
+
+      summary[subject.subjectCode] = { 
+        passedCount, 
+        failedCount, 
+        marksEnteredCount,
+        absentCount,
+        passPercentage
+      };
     });
     return summary;
   }, [classPerformanceData, subjectsForSelectedSemester]);
@@ -167,7 +189,7 @@ export default function ClassPerformancePage() {
           <CardHeader>
             <CardTitle>Performance for {selectedDepartment} - Semester {selectedSemester}, Section {selectedSection}</CardTitle>
             <CardDescription>
-              Showing IAT1 & IAT2 marks. Summary counts students with IA total &ge; 20 as Passed.
+              Showing IAT1 & IAT2 marks. Summary counts students with IA total &ge; 20 as Passed (out of appeared).
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -212,25 +234,27 @@ export default function ClassPerformancePage() {
                 <Card className="mt-6">
                   <CardHeader><CardTitle className="text-lg">Summary of Performance</CardTitle></CardHeader>
                   <CardContent>
-                    <p className="mb-4 text-sm text-muted-foreground">Total Students in Class: {classPerformanceData.length}</p>
+                    <p className="mb-4 text-sm text-muted-foreground">Total Students Registered for Class: {classPerformanceData.length}</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {subjectsForSelectedSemester.map(subject => {
                             const summary = performanceSummaryBySubject[subject.subjectCode];
-                            if (!summary || summary.marksEnteredCount === 0) return (
+                            if (!summary) return ( // Should not happen if logic is correct, but for safety
                                 <Card key={subject.subjectCode} className="bg-muted/30">
                                     <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">{subject.subjectName} ({subject.subjectCode})</CardTitle></CardHeader>
-                                    <CardContent><p className="text-xs text-muted-foreground">No IA marks entered.</p></CardContent>
+                                    <CardContent><p className="text-xs text-muted-foreground">Summary not available.</p></CardContent>
                                 </Card>
                             );
                             return (
                                 <Card key={subject.subjectCode} className="bg-muted/30">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="text-sm font-medium">{subject.subjectName} ({subject.subjectCode})</CardTitle>
-                                    <CardDescription className="text-xs">{summary.marksEnteredCount} students with IA marks</CardDescription>
+                                    <CardDescription className="text-xs">{summary.marksEnteredCount} students with IA marks (Appeared)</CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-1">
                                     <p className="text-xs flex items-center"><CheckSquare className="h-4 w-4 mr-1 text-success" />Passed (IA Total &ge; 20): {summary.passedCount}</p>
                                     <p className="text-xs flex items-center"><XSquare className="h-4 w-4 mr-1 text-destructive" />Failed (IA Total &lt; 20): {summary.failedCount}</p>
+                                    <p className="text-xs flex items-center"><UserX className="h-4 w-4 mr-1 text-orange-500" />Absent: {summary.absentCount}</p>
+                                    <p className="text-xs font-semibold flex items-center"><BadgePercent className="h-4 w-4 mr-1 text-blue-500" />Pass % (of Appeared): {summary.passPercentage}</p>
                                 </CardContent>
                                 </Card>
                             );
@@ -272,3 +296,6 @@ const TableSkeleton = ({ rows, cols }: { rows: number, cols: number }) => (
     </TableBody>
   </Table>
 );
+
+
+    
