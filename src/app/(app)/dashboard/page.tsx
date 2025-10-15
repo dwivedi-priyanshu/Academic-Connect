@@ -4,7 +4,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, BarChart2, Settings2, LibraryBig, UserSearch, Archive, BookCopy, Briefcase, Rocket, Presentation } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, BarChart2, Settings2, LibraryBig, UserSearch, Archive, BookCopy, Briefcase, Rocket, Presentation, Award, Video } from 'lucide-react';
 import Link from 'next/link';
 
 const StudentDashboard = () => {
@@ -162,6 +162,17 @@ const FacultyDashboard = () => (
         </Button>
       </CardContent>
     </Card>
+    <Card className="shadow-lg hover:shadow-xl transition-shadow">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Video className="text-primary" /> Flipped Class Report</CardTitle>
+        <CardDescription>Create and download a report for a flipped classroom session.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button asChild variant="outline">
+          <Link href="/faculty/flipped-classroom">Create Report <ArrowRight className="ml-2 h-4 w-4" /></Link>
+        </Button>
+      </CardContent>
+    </Card>
   </div>
 );
 
@@ -241,4 +252,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
