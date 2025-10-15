@@ -4,7 +4,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, BarChart2, Settings2, LibraryBig, UserSearch, Archive, BookCopy, Briefcase, Rocket, Presentation, Award, Video } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckSquare, ClipboardList, Edit3, FileText, LayoutDashboard, ShieldCheck, Users, UserCircle, BarChart2, Settings2, LibraryBig, UserSearch, Archive, BookCopy, Briefcase, Rocket, Presentation, Award, Video, Workflow } from 'lucide-react';
 import Link from 'next/link';
 
 const StudentDashboard = () => {
@@ -170,6 +170,17 @@ const FacultyDashboard = () => (
       <CardContent>
         <Button asChild variant="outline">
           <Link href="/faculty/flipped-classroom">Create Report <ArrowRight className="ml-2 h-4 w-4" /></Link>
+        </Button>
+      </CardContent>
+    </Card>
+    <Card className="shadow-lg hover:shadow-xl transition-shadow">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Workflow className="text-primary" /> Workshop Report</CardTitle>
+        <CardDescription>Generate a detailed report for a conducted workshop.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button asChild variant="outline">
+          <Link href="/faculty/workshop-report">Create Report <ArrowRight className="ml-2 h-4 w-4" /></Link>
         </Button>
       </CardContent>
     </Card>

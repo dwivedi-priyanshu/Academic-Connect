@@ -5,7 +5,7 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { AppSidebar, type NavItem } from '@/components/layout/AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { GraduationCap, LayoutDashboard, UserCircle, ClipboardList, FileText, BookOpen, Users, Edit3, CheckSquare, ShieldCheck, BarChart2, Settings2, LibraryBig, UserSearch, Archive, BookCopy, Briefcase, Rocket, Presentation, Award, Video } from 'lucide-react';
+import { GraduationCap, LayoutDashboard, UserCircle, ClipboardList, FileText, BookOpen, Users, Edit3, CheckSquare, ShieldCheck, BarChart2, Settings2, LibraryBig, UserSearch, Archive, BookCopy, Briefcase, Rocket, Presentation, Award, Video, Workflow } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const allNavItems: NavItem[] = [
@@ -25,6 +25,7 @@ const allNavItems: NavItem[] = [
   { href: '/faculty/approved-projects', label: 'Project Repository', icon: LibraryBig, roles: ['Faculty'] },
   { href: '/faculty/mooc-repository', label: 'MOOC Repository', icon: Archive, roles: ['Faculty'] },
   { href: '/faculty/flipped-classroom', label: 'Flipped Class Report', icon: Video, roles: ['Faculty'] },
+  { href: '/faculty/workshop-report', label: 'Workshop Report', icon: Workflow, roles: ['Faculty'] },
   { href: '/admin/users', label: 'User Management', icon: ShieldCheck, roles: ['Admin'] },
   { href: '/admin/assignments', label: 'Assignments', icon: Settings2, roles: ['Admin'] },
   { href: '/admin/subject-management', label: 'Subject Management', icon: BookCopy, roles: ['Admin'] },
