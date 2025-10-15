@@ -8,49 +8,56 @@ import { useState, useEffect } from 'react';
 interface FileUploadInputProps {
   id: string;
   label: string;
-  onFileChange: (file: File | null) => void;
+  onFileChange: (file: File | FileList | null) => void;
   accept?: string;
   currentFile?: string; 
-  disabled?: boolean; 
+  disabled?: boolean;
+  multiple?: boolean; 
 }
 
-export function FileUploadInput({ id, label, onFileChange, accept, currentFile, disabled }: FileUploadInputProps) {
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [inputKey, setInputKey] = useState<string>(id); // Key for resetting file input
+export function FileUploadInput({ id, label, onFileChange, accept, currentFile, disabled, multiple = false }: FileUploadInputProps) {
+  const [fileNames, setFileNames] = useState<string[]>([]);
+  const [inputKey, setInputKey] = useState<string>(id);
 
   useEffect(() => {
-    // Update fileName if currentFile prop changes (e.g. form reset or initial load)
-    setFileName(currentFile || null);
+    if (currentFile) {
+        setFileNames([currentFile]);
+    } else {
+        setFileNames([]);
+    }
     if (!currentFile) {
-      // If currentFile is cleared externally, reset the input key to clear the displayed file
       setInputKey(`${id}-${Date.now()}`);
     }
   }, [currentFile, id]);
 
-
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
-    onFileChange(file);
-    setFileName(file ? file.name : null); // Only show selected file, or null if cleared.
-                                          // currentFile prop handles showing existing server file.
+    const files = event.target.files;
+    if (multiple) {
+        onFileChange(files);
+        setFileNames(files ? Array.from(files).map(f => f.name) : []);
+    } else {
+        const file = files?.[0] || null;
+        onFileChange(file);
+        setFileNames(file ? [file.name] : []);
+    }
   };
 
   return (
     <div className="grid w-full items-center gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      {label && <Label htmlFor={id}>{label}</Label>}
       <Input 
         id={id} 
-        key={inputKey} // Key to force re-render and reset of file input
+        key={inputKey}
         type="file" 
         onChange={handleFileChange} 
         accept={accept} 
-        className="bg-background"
+        className="bg-background file:text-primary file:font-semibold"
         disabled={disabled}
+        multiple={multiple}
       />
-      {fileName && <p className="text-sm text-muted-foreground mt-1">Selected: {fileName}</p>}
-      {!fileName && currentFile && <p className="text-sm text-muted-foreground mt-1">Current: {currentFile}</p>}
-      {!fileName && !currentFile && <p className="text-sm text-muted-foreground mt-1">No file selected.</p>}
+      {fileNames.length > 0 && <p className="text-sm text-muted-foreground mt-1">Selected: {fileNames.join(', ')}</p>}
+      {!fileNames.length && currentFile && <p className="text-sm text-muted-foreground mt-1">Current: {currentFile}</p>}
+      {!fileNames.length && !currentFile && <p className="text-sm text-muted-foreground mt-1">No file selected.</p>}
     </div>
   );
 }
-

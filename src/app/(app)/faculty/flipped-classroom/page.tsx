@@ -47,6 +47,15 @@ const formSchema = z.object({
 
 type FlippedClassForm = z.infer<typeof formSchema>;
 
+const readFileAsDataURL = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
 export default function FlippedClassroomPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -60,12 +69,12 @@ export default function FlippedClassroomPage() {
     },
   });
 
-  const [facultyPhoto, setFacultyPhoto] = useState<File | null>(null);
+  const [facultyPhotos, setFacultyPhotos] = useState<FileList | null>(null);
   const [supportingImages, setSupportingImages] = useState<FileList | null>(null);
 
   const watchSessionType = watch("sessionType");
 
-  const generatePDF = (data: FlippedClassForm) => {
+  const generatePDF = async (data: FlippedClassForm) => {
     const doc = new jsPDF();
     
     // Title
@@ -91,10 +100,40 @@ export default function FlippedClassroomPage() {
         columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 }, 1: { cellWidth: 120 } }
     });
     
-    // Note about images (since they can't be directly embedded easily this way)
     let finalY = (doc as any).lastAutoTable.finalY || 10;
-    doc.setFontSize(8);
-    doc.text('Note: Faculty photo and supporting images are not included in this PDF.', 14, finalY + 10);
+    if (finalY > 260) { doc.addPage(); finalY = 15; } else { finalY += 15; }
+
+    const addImagesToPDF = async (files: FileList | null, title: string) => {
+        if (files && files.length > 0) {
+            doc.setFontSize(14);
+            doc.text(title, 14, finalY);
+            finalY += 10;
+
+            for (let i = 0; i < files.length; i++) {
+                try {
+                    const file = files[i];
+                    const dataUrl = await readFileAsDataURL(file);
+                    
+                    const imgProps = doc.getImageProperties(dataUrl);
+                    const imgWidth = 180; // Max width for image
+                    const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+
+                    if (finalY + imgHeight > 280) { // Check if there's space for the image
+                        doc.addPage();
+                        finalY = 15; // Reset Y position on new page
+                    }
+                    doc.addImage(dataUrl, 'JPEG', 15, finalY, imgWidth, imgHeight);
+                    finalY += imgHeight + 10;
+
+                } catch (e) {
+                    console.error("Error adding image to PDF:", e);
+                }
+            }
+        }
+    };
+    
+    await addImagesToPDF(facultyPhotos, "Faculty Photo(s) / Signature(s)");
+    await addImagesToPDF(supportingImages, "Supporting Image(s)");
 
 
     doc.save(`Flipped_Class_Report_${data.topic.replace(/\s/g, '_')}_${data.date}.pdf`);
@@ -134,9 +173,9 @@ export default function FlippedClassroomPage() {
           <FileUploadInput 
             id={name} 
             label=""
-            onFileChange={name === 'facultyPhoto' ? setFacultyPhoto : (files) => setSupportingImages(files as any)}
+            onFileChange={(files) => name === 'facultyPhoto' ? setFacultyPhotos(files as any) : setSupportingImages(files as any)}
             accept="image/*"
-            multiple={name === 'supportingImages'}
+            multiple={true} // Allow multiple for both
           />
       ) : (
         <Input id={name} type={name.includes('date') ? 'date' : name.includes('total') ? 'number' : 'text'} placeholder={placeholder} {...register(name)} className="bg-background" />
@@ -216,16 +255,17 @@ export default function FlippedClassroomPage() {
             {/* Section 8: File Uploads */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-6">
                <div className="space-y-1">
-                  <Label htmlFor="facultyPhoto" className="flex items-center text-muted-foreground"><span className="mr-2"><Camera /></span> Faculty Photo / Signature Upload</Label>
+                  <Label htmlFor="facultyPhoto" className="flex items-center text-muted-foreground"><span className="mr-2"><Camera /></span> Faculty Photo(s) / Signature(s) Upload</Label>
                   <FileUploadInput 
                     id="facultyPhoto" 
                     label=""
-                    onFileChange={setFacultyPhoto}
+                    onFileChange={(files) => setFacultyPhotos(files as any)}
                     accept="image/*"
+                    multiple
                   />
                </div>
                 <div className="space-y-1">
-                  <Label htmlFor="supportingImages" className="flex items-center text-muted-foreground"><span className="mr-2"><ImageIcon /></span> Supporting Images (optional)</Label>
+                  <Label htmlFor="supportingImages" className="flex items-center text-muted-foreground"><span className="mr-2"><ImageIcon /></span> Supporting Image(s)</Label>
                   <FileUploadInput 
                     id="supportingImages" 
                     label=""
