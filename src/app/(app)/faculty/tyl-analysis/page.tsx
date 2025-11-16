@@ -16,7 +16,7 @@ import { calculateTYLAnalysisAction, fetchRawTYLMarksAction, type TYLAnalysisDat
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from '@/components/ui/skeleton';
 import { DEPARTMENTS } from '@/lib/subjects';
-import { getTYLPassingMarks } from '@/lib/tyl-config';
+import { getTYLPassingMarks, TYL_CATEGORIES } from '@/lib/tyl-config';
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
@@ -45,26 +45,29 @@ export default function TYLAnalysisPage() {
   
   // Data
   const [analysisData, setAnalysisData] = useState<TYLAnalysisData[]>([]);
-  const [rawMarksData, setRawMarksData] = useState<Array<{ profile: StudentProfile; mark: SubjectMark }>>([]);
+  const [rawMarksData, setRawMarksData] = useState<Array<{ profile: StudentProfile; marks: SubjectMark[] }>>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Load analysis data based on type
   useEffect(() => {
     const loadAnalysisData = async () => {
+      // Semester is mandatory for all analysis types
+      if (!selectedSemester) {
+        setAnalysisData([]);
+        setRawMarksData([]);
+        return;
+      }
+
       if (analysisType === 'raw') {
-        // Load raw marks
-        if (!selectedSubjectCode) {
-          setRawMarksData([]);
-          return;
-        }
+        // Load raw marks - no subject filter needed, we'll show all TYL subjects
         setIsLoading(true);
         try {
           const data = await fetchRawTYLMarksAction({
             department: selectedDepartment || undefined,
             section: selectedSection || undefined,
             year: selectedYear ? parseInt(selectedYear) : undefined,
-            semester: selectedSemester ? parseInt(selectedSemester) : undefined,
-            subjectCode: selectedSubjectCode,
+            semester: parseInt(selectedSemester),
+            // Don't filter by subjectCode - we want all TYL marks
           });
           setRawMarksData(data);
         } catch (error) {
@@ -84,7 +87,7 @@ export default function TYLAnalysisPage() {
             for (const dept of DEPARTMENTS) {
               const result = await calculateTYLAnalysisAction({
                 department: dept,
-                semester: selectedSemester ? parseInt(selectedSemester) : undefined,
+                semester: parseInt(selectedSemester),
               });
               data.push(result);
             }
@@ -99,7 +102,7 @@ export default function TYLAnalysisPage() {
               const result = await calculateTYLAnalysisAction({
                 department: selectedDepartment,
                 section: sec,
-                semester: selectedSemester ? parseInt(selectedSemester) : undefined,
+                semester: parseInt(selectedSemester),
               });
               data.push(result);
             }
@@ -114,7 +117,7 @@ export default function TYLAnalysisPage() {
               const result = await calculateTYLAnalysisAction({
                 department: selectedDepartment,
                 year: parseInt(year),
-                semester: selectedSemester ? parseInt(selectedSemester) : undefined,
+                semester: parseInt(selectedSemester),
               });
               data.push(result);
             }
@@ -131,7 +134,7 @@ export default function TYLAnalysisPage() {
     };
 
     loadAnalysisData();
-  }, [analysisType, selectedDepartment, selectedSection, selectedYear, selectedSemester, selectedSubjectCode, toast]);
+  }, [analysisType, selectedDepartment, selectedSection, selectedYear, selectedSemester, toast]);
 
   if (!user || user.role !== 'Faculty') {
     return (
@@ -164,7 +167,9 @@ export default function TYLAnalysisPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="sticky left-0 bg-card z-10">{analysisType === 'department' ? 'Department' : analysisType === 'section' ? 'Section' : 'Year'}</TableHead>
+              <TableHead className="sticky left-0 bg-card z-10 min-w-[200px]">
+                {analysisType === 'department' ? 'Department' : analysisType === 'section' ? 'Section' : 'Year'}
+              </TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Total no. of Students</TableHead>
               
@@ -210,8 +215,12 @@ export default function TYLAnalysisPage() {
           <TableBody>
             {analysisData.map((data, idx) => (
               <TableRow key={idx}>
-                <TableCell className="font-medium sticky left-0 bg-card z-10">
-                  {data.department || data.section || `Year ${data.year}` || 'N/A'}
+                <TableCell className="font-medium sticky left-0 bg-card z-10 min-w-[200px]">
+                  {analysisType === 'section' 
+                    ? (data.section || 'N/A')
+                    : analysisType === 'batch'
+                    ? (`Year ${data.year}` || 'N/A')
+                    : (data.department || 'N/A')}
                 </TableCell>
                 <TableCell>{new Date().toLocaleDateString('en-GB')}</TableCell>
                 <TableCell className="font-semibold">{data.totalStudents}</TableCell>
@@ -267,7 +276,51 @@ export default function TYLAnalysisPage() {
     );
   };
 
-  // Render raw marks table
+  // Calculate Level Reached for a subject category
+  const calculateLevelReached = (marks: SubjectMark[], subjectCodes: string[]): number => {
+    // Get marks for this category, sorted by level (only levels with marks entered)
+    const categoryMarks = subjectCodes
+      .map(code => {
+        const mark = marks.find(m => {
+          const mCode = m.subjectCode.toLowerCase();
+          // Handle exact match or base code match (e.g., 'a1' matches 'a1' or 'a1-xxx')
+          const baseCode = code.toLowerCase();
+          return mCode === baseCode || mCode.startsWith(baseCode + '-') || mCode.startsWith(baseCode);
+        });
+        if (!mark) return null;
+        
+        // Check if marks are actually entered (not null)
+        const hasMarks = mark.ia1_50 !== null || mark.ia2_50 !== null;
+        if (!hasMarks) return null;
+        
+        return { code, mark, level: parseInt(code.slice(1)) };
+      })
+      .filter((item): item is { code: string; mark: SubjectMark; level: number } => item !== null)
+      .sort((a, b) => a.level - b.level);
+
+    // If no marks entered for this category, Level Reached = 0
+    if (categoryMarks.length === 0) return 0;
+
+    // Check if student passed all levels sequentially from the lowest to highest entered
+    let levelReached = 0;
+    for (const { mark, level } of categoryMarks) {
+      const total = (mark.ia1_50 || 0) + (mark.ia2_50 || 0);
+      const passingMarks = getTYLPassingMarks(mark.subjectCode);
+      
+      if (total >= passingMarks) {
+        // Student passed this level
+        levelReached = level;
+      } else {
+        // If any lower level fails, Level Reached = 0 (even if upper levels passed)
+        return 0;
+      }
+    }
+
+    // If all entered levels are passed, return the highest level reached
+    return levelReached;
+  };
+
+  // Render raw marks table in Excel format
   const renderRawMarksTable = () => {
     if (isLoading) {
       return <Skeleton className="h-96 w-full" />;
@@ -283,41 +336,157 @@ export default function TYLAnalysisPage() {
       );
     }
 
+    // Get all unique students
+    const studentsMap = new Map<string, { profile: StudentProfile; marks: SubjectMark[] }>();
+    rawMarksData.forEach(({ profile, marks }) => {
+      const studentId = profile.userId || profile.id;
+      if (!studentsMap.has(studentId)) {
+        studentsMap.set(studentId, { profile, marks: [] });
+      }
+      studentsMap.get(studentId)!.marks.push(...marks);
+    });
+
+    const students = Array.from(studentsMap.values());
+
     return (
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>USN</TableHead>
-              <TableHead>Student Name</TableHead>
-              <TableHead>Subject Code</TableHead>
-              <TableHead>Subject Name</TableHead>
-              <TableHead className="text-center">IA 1</TableHead>
-              <TableHead className="text-center">IA 2</TableHead>
-              <TableHead className="text-center">Total</TableHead>
-              <TableHead className="text-center">Passing Marks</TableHead>
-              <TableHead className="text-center">Status</TableHead>
+              <TableHead className="sticky left-0 bg-card z-10">USN</TableHead>
+              <TableHead className="sticky left-[120px] bg-card z-10">Student Name</TableHead>
+              
+              {/* Language Subjects */}
+              {TYL_LANGUAGE_SUBJECTS.map(sub => (
+                <TableHead key={sub} className="text-center bg-green-50 dark:bg-green-950/20">
+                  {sub.toUpperCase()}
+                </TableHead>
+              ))}
+              
+              {/* Aptitude Subjects */}
+              {TYL_APTITUDE_SUBJECTS.map(sub => (
+                <TableHead key={sub} className="text-center bg-teal-50 dark:bg-teal-950/20">
+                  {sub.toUpperCase()}
+                </TableHead>
+              ))}
+              
+              {/* Soft Skills Subjects */}
+              {TYL_SOFT_SKILLS_SUBJECTS.map(sub => (
+                <TableHead key={sub} className="text-center bg-yellow-50 dark:bg-yellow-950/20">
+                  {sub.toUpperCase()}
+                </TableHead>
+              ))}
+              
+              {/* Programming Subjects */}
+              {TYL_PROGRAMMING_SUBJECTS.map(sub => (
+                <TableHead key={sub} className="text-center bg-blue-50 dark:bg-blue-950/20">
+                  {sub.toUpperCase()}
+                </TableHead>
+              ))}
+              
+              {/* Core Subjects */}
+              {TYL_CORE_SUBJECTS.map(sub => (
+                <TableHead key={sub} className="text-center bg-purple-50 dark:bg-purple-950/20">
+                  {sub.toUpperCase()}
+                </TableHead>
+              ))}
+              
+              {/* Level Reached Columns */}
+              <TableHead className="text-center bg-cyan-50 dark:bg-cyan-950/20">Lx</TableHead>
+              <TableHead className="text-center bg-cyan-50 dark:bg-cyan-950/20">Ax</TableHead>
+              <TableHead className="text-center bg-cyan-50 dark:bg-cyan-950/20">Sx</TableHead>
+              <TableHead className="text-center bg-cyan-50 dark:bg-cyan-950/20">Px</TableHead>
+              <TableHead className="text-center bg-cyan-50 dark:bg-cyan-950/20">Cx</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rawMarksData.map((item, idx) => {
-              const total = (item.mark.ia1_50 || 0) + (item.mark.ia2_50 || 0);
-              const passingMarks = getTYLPassingMarks(item.mark.subjectCode);
-              const passed = total >= passingMarks;
-              
+            {students.map((student, idx) => {
+              const marksMap = new Map<string, SubjectMark>();
+              student.marks.forEach(mark => {
+                const code = mark.subjectCode.toLowerCase();
+                marksMap.set(code, mark);
+              });
+
+              // Calculate Level Reached for each category
+              const lx = calculateLevelReached(student.marks, TYL_CATEGORIES.language);
+              const ax = calculateLevelReached(student.marks, TYL_CATEGORIES.aptitude);
+              const sx = calculateLevelReached(student.marks, TYL_CATEGORIES['soft skills']);
+              const px = calculateLevelReached(student.marks, TYL_CATEGORIES.programming);
+              const cx = calculateLevelReached(student.marks, TYL_CATEGORIES.core);
+
+              const getMarkForSubject = (code: string): number | null => {
+                const mark = marksMap.get(code.toLowerCase());
+                if (!mark) return null;
+                const ia1 = mark.ia1_50 ?? 0;
+                const ia2 = mark.ia2_50 ?? 0;
+                return ia1 + ia2;
+              };
+
               return (
                 <TableRow key={idx}>
-                  <TableCell className="font-mono">{item.mark.usn || item.profile.admissionId}</TableCell>
-                  <TableCell>{item.mark.studentName || item.profile.fullName}</TableCell>
-                  <TableCell className="font-mono">{item.mark.subjectCode}</TableCell>
-                  <TableCell>{item.mark.subjectName}</TableCell>
-                  <TableCell className="text-center">{item.mark.ia1_50 ?? 'N/A'}</TableCell>
-                  <TableCell className="text-center">{item.mark.ia2_50 ?? 'N/A'}</TableCell>
-                  <TableCell className="text-center font-semibold">{total}</TableCell>
-                  <TableCell className="text-center">{passingMarks}</TableCell>
-                  <TableCell className={`text-center font-semibold ${passed ? 'text-green-600' : 'text-red-600'}`}>
-                    {passed ? 'Pass' : 'Fail'}
+                  <TableCell className="font-mono sticky left-0 bg-card z-10">
+                    {student.profile.admissionId || 'N/A'}
                   </TableCell>
+                  <TableCell className="sticky left-[120px] bg-card z-10">
+                    {student.profile.fullName || 'N/A'}
+                  </TableCell>
+                  
+                  {/* Language marks */}
+                  {TYL_LANGUAGE_SUBJECTS.map(sub => {
+                    const mark = getMarkForSubject(sub);
+                    return (
+                      <TableCell key={sub} className="text-center bg-green-50/50 dark:bg-green-950/10">
+                        {mark !== null ? mark : ''}
+                      </TableCell>
+                    );
+                  })}
+                  
+                  {/* Aptitude marks */}
+                  {TYL_APTITUDE_SUBJECTS.map(sub => {
+                    const mark = getMarkForSubject(sub);
+                    return (
+                      <TableCell key={sub} className="text-center bg-teal-50/50 dark:bg-teal-950/10">
+                        {mark !== null ? mark : ''}
+                      </TableCell>
+                    );
+                  })}
+                  
+                  {/* Soft Skills marks */}
+                  {TYL_SOFT_SKILLS_SUBJECTS.map(sub => {
+                    const mark = getMarkForSubject(sub);
+                    return (
+                      <TableCell key={sub} className="text-center bg-yellow-50/50 dark:bg-yellow-950/10">
+                        {mark !== null ? mark : ''}
+                      </TableCell>
+                    );
+                  })}
+                  
+                  {/* Programming marks */}
+                  {TYL_PROGRAMMING_SUBJECTS.map(sub => {
+                    const mark = getMarkForSubject(sub);
+                    return (
+                      <TableCell key={sub} className="text-center bg-blue-50/50 dark:bg-blue-950/10">
+                        {mark !== null ? mark : ''}
+                      </TableCell>
+                    );
+                  })}
+                  
+                  {/* Core marks */}
+                  {TYL_CORE_SUBJECTS.map(sub => {
+                    const mark = getMarkForSubject(sub);
+                    return (
+                      <TableCell key={sub} className="text-center bg-purple-50/50 dark:bg-purple-950/10">
+                        {mark !== null ? mark : ''}
+                      </TableCell>
+                    );
+                  })}
+                  
+                  {/* Level Reached */}
+                  <TableCell className="text-center bg-cyan-50 dark:bg-cyan-950/20 font-semibold">{lx}</TableCell>
+                  <TableCell className="text-center bg-cyan-50 dark:bg-cyan-950/20 font-semibold">{ax}</TableCell>
+                  <TableCell className="text-center bg-cyan-50 dark:bg-cyan-950/20 font-semibold">{sx}</TableCell>
+                  <TableCell className="text-center bg-cyan-50 dark:bg-cyan-950/20 font-semibold">{px}</TableCell>
+                  <TableCell className="text-center bg-cyan-50 dark:bg-cyan-950/20 font-semibold">{cx}</TableCell>
                 </TableRow>
               );
             })}
@@ -336,65 +505,133 @@ export default function TYLAnalysisPage() {
           <CardTitle>Analysis Type & Filters</CardTitle>
           <CardDescription>Select the type of analysis and apply filters to view TYL performance data.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Analysis Type</Label>
-            <Select value={analysisType} onValueChange={(value) => {
-              setAnalysisType(value as 'department' | 'section' | 'batch' | 'raw');
-              setAnalysisData([]);
-              setRawMarksData([]);
-            }}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="department">Department-wise Analysis</SelectItem>
-                <SelectItem value="section">Section-wise Analysis</SelectItem>
-                <SelectItem value="batch">Batch-wise/Year-wise Analysis</SelectItem>
-                <SelectItem value="raw">Raw Marks View</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <CardContent className="p-0">
+          <Tabs value={analysisType} onValueChange={(value) => {
+            setAnalysisType(value as 'department' | 'section' | 'batch' | 'raw');
+            setAnalysisData([]);
+            setRawMarksData([]);
+          }} className="w-full">
+            <TabsList className="grid w-full grid-cols-4 rounded-none border-b">
+              <TabsTrigger 
+                value="department" 
+                className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
+              >
+                <Building className="mr-2 h-4 w-4" />
+                Department
+              </TabsTrigger>
+              <TabsTrigger 
+                value="section" 
+                className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
+              >
+                <Users className="mr-2 h-4 w-4" />
+                Section
+              </TabsTrigger>
+              <TabsTrigger 
+                value="batch" 
+                className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
+              >
+                <Calendar className="mr-2 h-4 w-4" />
+                Batch/Year
+              </TabsTrigger>
+              <TabsTrigger 
+                value="raw" 
+                className="rounded-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:shadow-none"
+              >
+                <FileText className="mr-2 h-4 w-4" />
+                Raw Marks
+              </TabsTrigger>
+            </TabsList>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {analysisType !== 'department' && (
-              <div className="space-y-1">
-                <Label>Department</Label>
-                <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-                  <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
-                  <SelectContent>
-                    {DEPARTMENTS.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            <TabsContent value="department" className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label>Semester <span className="text-destructive">*</span></Label>
+                  <Select value={selectedSemester} onValueChange={setSelectedSemester} required>
+                    <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
+                    <SelectContent>
+                      {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            )}
+            </TabsContent>
 
-            {analysisType === 'section' && (
-              <div className="space-y-1">
-                <Label>Section</Label>
-                <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedDepartment}>
-                  <SelectTrigger><SelectValue placeholder="Select Section" /></SelectTrigger>
-                  <SelectContent>
-                    {SECTIONS.map(sec => <SelectItem key={sec} value={sec}>Section {sec}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            <TabsContent value="section" className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <Label>Department <span className="text-destructive">*</span></Label>
+                  <Select value={selectedDepartment} onValueChange={setSelectedDepartment} required>
+                    <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
+                    <SelectContent>
+                      {DEPARTMENTS.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Section</Label>
+                  <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedDepartment}>
+                    <SelectTrigger><SelectValue placeholder="Select Section" /></SelectTrigger>
+                    <SelectContent>
+                      {SECTIONS.map(sec => <SelectItem key={sec} value={sec}>Section {sec}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Semester <span className="text-destructive">*</span></Label>
+                  <Select value={selectedSemester} onValueChange={setSelectedSemester} required>
+                    <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
+                    <SelectContent>
+                      {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            )}
+            </TabsContent>
 
-            {analysisType === 'batch' && (
-              <div className="space-y-1">
-                <Label>Year</Label>
-                <Select value={selectedYear} onValueChange={setSelectedYear} disabled={!selectedDepartment}>
-                  <SelectTrigger><SelectValue placeholder="Select Year" /></SelectTrigger>
-                  <SelectContent>
-                    {YEARS.map(year => <SelectItem key={year} value={year}>Year {year}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            <TabsContent value="batch" className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <Label>Department <span className="text-destructive">*</span></Label>
+                  <Select value={selectedDepartment} onValueChange={setSelectedDepartment} required>
+                    <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
+                    <SelectContent>
+                      {DEPARTMENTS.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Year</Label>
+                  <Select value={selectedYear} onValueChange={setSelectedYear} disabled={!selectedDepartment}>
+                    <SelectTrigger><SelectValue placeholder="Select Year" /></SelectTrigger>
+                    <SelectContent>
+                      {YEARS.map(year => <SelectItem key={year} value={year}>Year {year}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Semester <span className="text-destructive">*</span></Label>
+                  <Select value={selectedSemester} onValueChange={setSelectedSemester} required>
+                    <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
+                    <SelectContent>
+                      {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            )}
+            </TabsContent>
 
-            {analysisType === 'raw' && (
-              <>
+            <TabsContent value="raw" className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <Label>Department</Label>
+                  <Select value={selectedDepartment || 'all'} onValueChange={(value) => setSelectedDepartment(value === 'all' ? '' : value)}>
+                    <SelectTrigger><SelectValue placeholder="All Departments" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Departments</SelectItem>
+                      {DEPARTMENTS.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-1">
                   <Label>Section</Label>
                   <Select value={selectedSection || 'all'} onValueChange={(value) => setSelectedSection(value === 'all' ? '' : value)}>
@@ -406,61 +643,31 @@ export default function TYLAnalysisPage() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>TYL Subject</Label>
-                  <Select value={selectedSubjectCode} onValueChange={setSelectedSubjectCode} required>
-                    <SelectTrigger><SelectValue placeholder="Select Subject" /></SelectTrigger>
+                  <Label>Semester <span className="text-destructive">*</span></Label>
+                  <Select value={selectedSemester} onValueChange={setSelectedSemester} required>
+                    <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="a1">A1 - Aptitude</SelectItem>
-                      <SelectItem value="a2">A2 - Aptitude</SelectItem>
-                      <SelectItem value="a3">A3 - Aptitude</SelectItem>
-                      <SelectItem value="a4">A4 - Aptitude</SelectItem>
-                      <SelectItem value="l1">L1 - Language</SelectItem>
-                      <SelectItem value="l2">L2 - Language</SelectItem>
-                      <SelectItem value="l3">L3 - Language</SelectItem>
-                      <SelectItem value="l4">L4 - Language</SelectItem>
-                      <SelectItem value="s1">S1 - Soft Skills</SelectItem>
-                      <SelectItem value="s2">S2 - Soft Skills</SelectItem>
-                      <SelectItem value="s3">S3 - Soft Skills</SelectItem>
-                      <SelectItem value="s4">S4 - Soft Skills</SelectItem>
-                      <SelectItem value="p1">P1 - Programming (C)</SelectItem>
-                      <SelectItem value="p2">P2 - Programming (Python)</SelectItem>
-                      <SelectItem value="p3">P3 - Programming</SelectItem>
-                      <SelectItem value="p4">P4 - Programming</SelectItem>
-                      <SelectItem value="c2">C2 - Core</SelectItem>
-                      <SelectItem value="c3">C3 - Core</SelectItem>
-                      <SelectItem value="c4">C4 - Core</SelectItem>
-                      <SelectItem value="c5">C5 - Core</SelectItem>
+                      {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-              </>
-            )}
-
-            <div className="space-y-1">
-              <Label>Semester (Optional)</Label>
-              <Select value={selectedSemester || 'all'} onValueChange={(value) => setSelectedSemester(value === 'all' ? '' : value)}>
-                <SelectTrigger><SelectValue placeholder="All Semesters" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Semesters</SelectItem>
-                  {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>
-            {analysisType === 'department' && 'Department-wise TYL Analysis'}
-            {analysisType === 'section' && 'Section-wise TYL Analysis'}
-            {analysisType === 'batch' && 'Batch-wise/Year-wise TYL Analysis'}
-            {analysisType === 'raw' && 'Raw TYL Marks'}
+          <CardTitle className="flex items-center gap-2">
+            {analysisType === 'department' && <><Building className="h-5 w-5" /> Department-wise TYL Analysis</>}
+            {analysisType === 'section' && <><Users className="h-5 w-5" /> Section-wise TYL Analysis</>}
+            {analysisType === 'batch' && <><Calendar className="h-5 w-5" /> Batch-wise/Year-wise TYL Analysis</>}
+            {analysisType === 'raw' && <><FileText className="h-5 w-5" /> Raw TYL Marks</>}
           </CardTitle>
           <CardDescription>
             {analysisType === 'raw' 
-              ? 'View raw marks for students in the selected TYL subject. No calculations or analysis performed.'
+              ? 'View raw marks for all TYL subjects. Each row shows one student with their marks across all TYL subjects. Level Reached columns show the highest level passed for each category.'
               : 'Performance analysis showing number of students who passed each TYL subject category.'}
           </CardDescription>
         </CardHeader>

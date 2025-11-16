@@ -269,6 +269,7 @@ export async function calculateTYLAnalysisAction(
 }
 
 // Fetch raw TYL marks for display (no analysis)
+// Returns all TYL marks grouped by student
 export async function fetchRawTYLMarksAction(
   filters?: {
     department?: string;
@@ -279,21 +280,21 @@ export async function fetchRawTYLMarksAction(
   }
 ): Promise<Array<{
   profile: StudentProfile;
-  mark: SubjectMark;
+  marks: SubjectMark[];
 }>> {
   try {
     const data = await fetchAllTYLMarksAction(filters);
-    const result: Array<{ profile: StudentProfile; mark: SubjectMark }> = [];
-
-    data.forEach(({ profile, marks }) => {
-      marks.forEach(mark => {
-        if (!filters?.subjectCode || mark.subjectCode.toLowerCase() === filters.subjectCode.toLowerCase()) {
-          result.push({ profile, mark });
-        }
-      });
-    });
-
-    return result;
+    
+    // If subjectCode filter is provided, filter marks
+    if (filters?.subjectCode) {
+      return data.map(({ profile, marks }) => ({
+        profile,
+        marks: marks.filter(m => m.subjectCode.toLowerCase() === filters.subjectCode!.toLowerCase())
+      })).filter(item => item.marks.length > 0);
+    }
+    
+    // Return all marks grouped by student
+    return data;
   } catch (error) {
     console.error('Error fetching raw TYL marks:', error);
     throw new Error('Failed to fetch raw TYL marks.');
