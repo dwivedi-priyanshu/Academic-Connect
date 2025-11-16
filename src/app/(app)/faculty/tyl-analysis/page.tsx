@@ -5,247 +5,327 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
-import type { SubjectMark, FacultySubjectAssignment } from '@/types';
-import { BarChart as BarChartIcon, Info, Users, Percent, TrendingUp, TrendingDown, CheckSquare } from 'lucide-react'; 
-import { useState, useEffect, useMemo } from 'react';
+import type { SubjectMark, StudentProfile } from '@/types';
+import { BarChart as BarChartIcon, Info, FileText, Building, Users, Calendar } from 'lucide-react'; 
+import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { fetchMarksFromStorage } from '@/actions/marks-actions'; 
-import { fetchFacultyAssignmentsForClassAction } from '@/actions/faculty-actions';
+import { calculateTYLAnalysisAction, fetchRawTYLMarksAction, type TYLAnalysisData } from '@/actions/tyl-actions';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from '@/components/ui/skeleton';
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
-
+import { DEPARTMENTS } from '@/lib/subjects';
+import { getTYLPassingMarks } from '@/lib/tyl-config';
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
+const YEARS = ["1", "2", "3", "4"];
 
-// Helper function to check if a subject code is a TYL subject
-const isTYLSubject = (subjectCode: string): boolean => {
-  const tylPattern = /^(a[1-4]|c[1-4]|l[1-3]|p[1-3]|s[1-3])$/i;
-  return tylPattern.test(subjectCode.toLowerCase());
-};
-
-const calculateDetailedSummary = (marks: SubjectMark[]) => {
-    if (!marks || marks.length === 0) {
-        return { count: 0, averages: {}, passPercentages: {}, highPerformers: 0, lowPerformers: 0, distribution: {} };
-    }
-    const validMarks = marks.filter(m =>
-        m.ia1_50 !== null ||
-        m.ia2_50 !== null ||
-        m.assignment1_20 !== null ||
-        m.assignment2_20 !== null
-    );
-    const count = validMarks.length;
-    if (count === 0) {
-         return { count: 0, averages: {}, passPercentages: {}, highPerformers: 0, lowPerformers: 0, distribution: {} };
-    }
-
-    const fields: (keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50' | 'assignment1_20' | 'assignment2_20'>)[] = ['ia1_50', 'ia2_50', 'assignment1_20', 'assignment2_20'];
-    const maxMarks: Record<string, number> = { 'ia1_50': 50, 'ia2_50': 50, 'assignment1_20': 20, 'assignment2_20': 20 };
-    const passMarksThresholdFactor = 0.4; 
-
-    const averages: Record<string, string> = {};
-    const passPercentages: Record<string, string> = {};
-    const distribution: Record<string, Record<string, number>> = {};
-
-
-    fields.forEach(field => {
-        const marksList = validMarks.map(m => m[field]).filter(mark => typeof mark === 'number') as number[];
-        
-        distribution[field] = {};
-        const max = maxMarks[field];
-        const ranges = [[0, 0.2*max], [0.2*max + 0.01, 0.4*max], [0.4*max + 0.01, 0.6*max], [0.6*max + 0.01, 0.8*max], [0.8*max + 0.01, max]];
-        ranges.forEach((range, idx) => {
-            const rangeLabel = `${Math.floor(range[0])}-${Math.ceil(range[1])}`;
-            distribution[field][rangeLabel] = marksList.filter(mark => mark >= range[0] && mark <= range[1]).length;
-        });
-        
-        if (marksList.length > 0) {
-            const sum = marksList.reduce((acc, curr) => acc + curr, 0);
-            averages[field] = (sum / marksList.length).toFixed(2);
-            const passMark = max * passMarksThresholdFactor;
-            const passedCount = marksList.filter(mark => mark >= passMark).length;
-            passPercentages[field] = ((passedCount / marksList.length) * 100).toFixed(1) + '%';
-        } else {
-            averages[field] = 'N/A';
-            passPercentages[field] = 'N/A';
-        }
-    });
-
-    const iaAvgList = validMarks.map(m => {
-        const ia1 = typeof m.ia1_50 === 'number' ? m.ia1_50 : 0;
-        const ia2 = typeof m.ia2_50 === 'number' ? m.ia2_50 : 0;
-        const numValidIAs = (typeof m.ia1_50 === 'number' ? 1 : 0) + (typeof m.ia2_50 === 'number' ? 1 : 0);
-        return numValidIAs > 0 ? (ia1 + ia2) / numValidIAs : null; 
-    }).filter(avg => avg !== null) as number[];
-
-    let highPerformers = 0;
-    let lowPerformers = 0;
-    if (iaAvgList.length > 0) {
-        const overallAvgIA = iaAvgList.reduce((a,b) => a + b, 0) / iaAvgList.length;
-        highPerformers = iaAvgList.filter(avg => avg >= overallAvgIA * 1.2).length; 
-        lowPerformers = iaAvgList.filter(avg => avg < overallAvgIA * 0.8).length; 
-    }
-
-    return {
-        count,
-        averages,
-        passPercentages,
-        highPerformers,
-        lowPerformers,
-        distribution
-    };
-};
-
-const chartConfig = {
-  averageScore: { label: "Average Score", color: "hsl(var(--chart-1))" },
-  maxMarks: { label: "Max Marks", color: "hsl(var(--chart-2))" },
-  passPercentage: { label: "Pass %", color: "hsl(var(--chart-3))" },
-  count: { label: "Students", color: "hsl(var(--chart-4))" },
-} satisfies ChartConfig;
-
+// TYL Subject codes in order as per Excel
+const TYL_APTITUDE_SUBJECTS = ['a1', 'a2', 'a3', 'a4'];
+const TYL_LANGUAGE_SUBJECTS = ['l1', 'l2', 'l3', 'l4'];
+const TYL_SOFT_SKILLS_SUBJECTS = ['s1', 's2', 's3', 's4'];
+const TYL_PROGRAMMING_SUBJECTS = ['p1', 'p2', 'p3', 'p4'];
+const TYL_CORE_SUBJECTS = ['c2', 'c3', 'c4', 'c5'];
 
 export default function TYLAnalysisPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [selectedSemester, setSelectedSemester] = useState<string>("");
-  const [selectedSection, setSelectedSection] = useState<string>("");
-  const [selectedSubject, setSelectedSubject] = useState<{ code: string, name: string } | null>(null);
   
-  const [assignedSubjectsForClass, setAssignedSubjectsForClass] = useState<{ code: string, name: string }[]>([]);
-  const [isLoadingAssignedSubjects, setIsLoadingAssignedSubjects] = useState(false);
-
-  const [analysisSummary, setAnalysisSummary] = useState<ReturnType<typeof calculateDetailedSummary> | null>(null);
+  // Analysis type selection
+  const [analysisType, setAnalysisType] = useState<'department' | 'section' | 'batch' | 'raw'>('department');
+  
+  // Filters
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('');
+  const [selectedSection, setSelectedSection] = useState<string>('');
+  const [selectedYear, setSelectedYear] = useState<string>('');
+  const [selectedSemester, setSelectedSemester] = useState<string>('');
+  const [selectedSubjectCode, setSelectedSubjectCode] = useState<string>('');
+  
+  // Data
+  const [analysisData, setAnalysisData] = useState<TYLAnalysisData[]>([]);
+  const [rawMarksData, setRawMarksData] = useState<Array<{ profile: StudentProfile; mark: SubjectMark }>>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
+  // Load analysis data based on type
   useEffect(() => {
-    setSelectedSubject(null);
-    setAnalysisSummary(null); 
-    setAssignedSubjectsForClass([]);
-    setInitialLoadComplete(false);
-
-    if (user && selectedSemester && selectedSection) {
-      setIsLoadingAssignedSubjects(true);
-      fetchFacultyAssignmentsForClassAction(user.id, parseInt(selectedSemester), selectedSection)
-        .then(assignments => {
-          // Filter only TYL subjects
-          const tylSubjects = assignments
-            .filter(a => isTYLSubject(a.subjectCode))
-            .map(a => ({ code: a.subjectCode, name: a.subjectName }));
-          setAssignedSubjectsForClass(tylSubjects);
-           if (tylSubjects.length === 0) {
-            toast({ title: "No TYL Subjects Assigned", description: "You are not assigned to any TYL subjects for the selected class.", variant: "default" });
-          }
-        })
-        .catch(err => {
-          console.error("Error fetching assigned subjects:", err);
-          toast({ title: "Error", description: "Could not load assigned TYL subjects.", variant: "destructive" });
-        })
-        .finally(() => setIsLoadingAssignedSubjects(false));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, selectedSemester, selectedSection, toast]);
-
-   useEffect(() => {
-     setAnalysisSummary(null);
-     setInitialLoadComplete(false);
-   }, [selectedSubject]);
-
-
-  useEffect(() => {
-    const loadPerformanceData = async () => {
-      if (selectedSemester && selectedSection && selectedSubject && user) {
+    const loadAnalysisData = async () => {
+      if (analysisType === 'raw') {
+        // Load raw marks
+        if (!selectedSubjectCode) {
+          setRawMarksData([]);
+          return;
+        }
         setIsLoading(true);
-        setInitialLoadComplete(false);
-        setAnalysisSummary(null); 
         try {
-          const marks = await fetchMarksFromStorage(
-              parseInt(selectedSemester),
-              selectedSection,
-              selectedSubject.code
-          );
-           setInitialLoadComplete(true); 
-          if (marks.length > 0) {
-            const summary = calculateDetailedSummary(marks);
-            setAnalysisSummary(summary);
-          } else {
-             toast({ title: "No Data", description: "No marks data found for this selection. Ensure marks have been entered for this class/subject.", variant: "default" });
-          }
+          const data = await fetchRawTYLMarksAction({
+            department: selectedDepartment || undefined,
+            section: selectedSection || undefined,
+            year: selectedYear ? parseInt(selectedYear) : undefined,
+            semester: selectedSemester ? parseInt(selectedSemester) : undefined,
+            subjectCode: selectedSubjectCode,
+          });
+          setRawMarksData(data);
         } catch (error) {
-            console.error("Error fetching marks for analysis:", error);
-            toast({ title: "Error", description: (error as Error).message || "Could not fetch marks data.", variant: "destructive" });
-            setInitialLoadComplete(true); 
+          toast({ title: "Error", description: "Failed to load raw marks data.", variant: "destructive" });
+          setRawMarksData([]);
         } finally {
-             setIsLoading(false);
+          setIsLoading(false);
         }
       } else {
-           setIsLoading(false);
-           setInitialLoadComplete(false); 
-           setAnalysisSummary(null);
+        // Load analysis data
+        setIsLoading(true);
+        try {
+          let data: TYLAnalysisData[] = [];
+          
+          if (analysisType === 'department') {
+            // Load for all departments
+            for (const dept of DEPARTMENTS) {
+              const result = await calculateTYLAnalysisAction({
+                department: dept,
+                semester: selectedSemester ? parseInt(selectedSemester) : undefined,
+              });
+              data.push(result);
+            }
+          } else if (analysisType === 'section') {
+            // Load for all sections of selected department
+            if (!selectedDepartment) {
+              setAnalysisData([]);
+              setIsLoading(false);
+              return;
+            }
+            for (const sec of SECTIONS) {
+              const result = await calculateTYLAnalysisAction({
+                department: selectedDepartment,
+                section: sec,
+                semester: selectedSemester ? parseInt(selectedSemester) : undefined,
+              });
+              data.push(result);
+            }
+          } else if (analysisType === 'batch') {
+            // Load for all years/batches
+            if (!selectedDepartment) {
+              setAnalysisData([]);
+              setIsLoading(false);
+              return;
+            }
+            for (const year of YEARS) {
+              const result = await calculateTYLAnalysisAction({
+                department: selectedDepartment,
+                year: parseInt(year),
+                semester: selectedSemester ? parseInt(selectedSemester) : undefined,
+              });
+              data.push(result);
+            }
+          }
+          
+          setAnalysisData(data);
+        } catch (error) {
+          toast({ title: "Error", description: "Failed to load analysis data.", variant: "destructive" });
+          setAnalysisData([]);
+        } finally {
+          setIsLoading(false);
+        }
       }
     };
-    if (selectedSubject) {
-        loadPerformanceData();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSubject, user, toast]);
 
-  const averageScoresChartData = useMemo(() => {
-    if (!analysisSummary?.averages) return [];
-    const data = [];
-    const maxMarksMap: Record<string, number> = { ia1_50: 50, ia2_50: 50, assignment1_20: 20, assignment2_20: 20 };
-    const labels: Record<string, string> = { ia1_50: "IA 1", ia2_50: "IA 2", assignment1_20: "Assign 1", assignment2_20: "Assign 2" };
-
-    for (const key in analysisSummary.averages) {
-      if (analysisSummary.averages[key] !== 'N/A') {
-        data.push({
-          name: labels[key as keyof typeof labels] || key,
-          "Average Score": parseFloat(analysisSummary.averages[key]),
-          "Max Marks": maxMarksMap[key as keyof typeof maxMarksMap],
-        });
-      }
-    }
-    return data;
-  }, [analysisSummary]);
-
-  const passPercentageChartData = useMemo(() => {
-    if (!analysisSummary?.passPercentages) return [];
-    const data = [];
-    const labels: Record<string, string> = { ia1_50: "IA 1", ia2_50: "IA 2", assignment1_20: "Assign 1", assignment2_20: "Assign 2" };
-
-    for (const key in analysisSummary.passPercentages) {
-      if (analysisSummary.passPercentages[key] !== 'N/A') {
-        data.push({
-          name: labels[key as keyof typeof labels] || key,
-          "Pass %": parseFloat(analysisSummary.passPercentages[key].replace('%','')),
-        });
-      }
-    }
-    return data;
-  }, [analysisSummary]);
-  
-  const distributionChartData = useMemo(() => {
-    if (!analysisSummary?.distribution) return [];
-    const assessmentLabels: Record<string, string> = { ia1_50: "IA 1", ia2_50: "IA 2", assignment1_20: "Assign 1", assignment2_20: "Assign 2" };
-    
-    return Object.entries(assessmentLabels).map(([fieldKey, assessmentName]) => {
-        const dist = analysisSummary.distribution[fieldKey] || {};
-        return {
-            assessment: assessmentName,
-            data: Object.entries(dist).map(([range, count]) => ({ range, count }))
-        };
-    }).filter(item => item.data.length > 0);
-  }, [analysisSummary]);
-
+    loadAnalysisData();
+  }, [analysisType, selectedDepartment, selectedSection, selectedYear, selectedSemester, selectedSubjectCode, toast]);
 
   if (!user || user.role !== 'Faculty') {
-    return <p>Access denied. This page is for faculty members only.</p>;
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-10">
+        <BarChartIcon className="w-16 h-16 mb-4 text-destructive" />
+        <h2 className="text-2xl font-semibold mb-2">Access Denied</h2>
+        <p className="text-muted-foreground">This page is for faculty members only.</p>
+      </div>
+    );
   }
 
-  const selectionMade = !!(selectedSemester && selectedSection && selectedSubject);
+  // Render analysis table based on Excel format
+  const renderAnalysisTable = () => {
+    if (isLoading) {
+      return <Skeleton className="h-96 w-full" />;
+    }
+
+    if (analysisData.length === 0) {
+      return (
+        <Alert>
+          <Info className="h-5 w-5" />
+          <AlertTitle>No Data</AlertTitle>
+          <AlertDescription>No analysis data available for the selected filters.</AlertDescription>
+        </Alert>
+      );
+    }
+
+    return (
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="sticky left-0 bg-card z-10">{analysisType === 'department' ? 'Department' : analysisType === 'section' ? 'Section' : 'Year'}</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Total no. of Students</TableHead>
+              
+              {/* Aptitude Subjects */}
+              {TYL_APTITUDE_SUBJECTS.map(sub => (
+                <TableHead key={sub} className="text-center">A{sub.slice(1)}</TableHead>
+              ))}
+              
+              {/* Language Subjects */}
+              {TYL_LANGUAGE_SUBJECTS.map(sub => (
+                <TableHead key={sub} className="text-center">L{sub.slice(1)}</TableHead>
+              ))}
+              
+              {/* Soft Skills Subjects */}
+              {TYL_SOFT_SKILLS_SUBJECTS.map(sub => (
+                <TableHead key={sub} className="text-center">S{sub.slice(1)}</TableHead>
+              ))}
+              
+              {/* Core Subjects - simplified for now */}
+              <TableHead className="text-center">C2 ODD</TableHead>
+              <TableHead className="text-center">C2 FULL</TableHead>
+              <TableHead className="text-center">C3 ODD</TableHead>
+              <TableHead className="text-center">C3 FULL</TableHead>
+              <TableHead className="text-center">C4 ODD</TableHead>
+              <TableHead className="text-center">C4 FULL</TableHead>
+              <TableHead className="text-center">C5 FULL</TableHead>
+              
+              {/* Programming Subjects */}
+              <TableHead className="text-center">P1-C</TableHead>
+              <TableHead className="text-center">P2 Python</TableHead>
+              <TableHead className="text-center">P3 Python</TableHead>
+              <TableHead className="text-center">P3 Java</TableHead>
+              <TableHead className="text-center">P4 MAD/FSD</TableHead>
+              <TableHead className="text-center">P4 DS</TableHead>
+              
+              {/* Levels Reached */}
+              <TableHead className="text-center bg-yellow-100">UG LX</TableHead>
+              <TableHead className="text-center bg-yellow-100">UG SX</TableHead>
+              <TableHead className="text-center bg-yellow-100">UG AX</TableHead>
+              <TableHead className="text-center bg-yellow-100">UG PX</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {analysisData.map((data, idx) => (
+              <TableRow key={idx}>
+                <TableCell className="font-medium sticky left-0 bg-card z-10">
+                  {data.department || data.section || `Year ${data.year}` || 'N/A'}
+                </TableCell>
+                <TableCell>{new Date().toLocaleDateString('en-GB')}</TableCell>
+                <TableCell className="font-semibold">{data.totalStudents}</TableCell>
+                
+                {/* Aptitude counts */}
+                {TYL_APTITUDE_SUBJECTS.map(sub => (
+                  <TableCell key={sub} className="text-center">
+                    {data.passedCounts[sub] || 0}
+                  </TableCell>
+                ))}
+                
+                {/* Language counts */}
+                {TYL_LANGUAGE_SUBJECTS.map(sub => (
+                  <TableCell key={sub} className="text-center">
+                    {data.passedCounts[sub] || 0}
+                  </TableCell>
+                ))}
+                
+                {/* Soft Skills counts */}
+                {TYL_SOFT_SKILLS_SUBJECTS.map(sub => (
+                  <TableCell key={sub} className="text-center">
+                    {data.passedCounts[sub] || 0}
+                  </TableCell>
+                ))}
+                
+                {/* Core counts */}
+                <TableCell className="text-center">{data.passedCounts['c2-odd'] || 0}</TableCell>
+                <TableCell className="text-center">{data.passedCounts['c2-full'] || 0}</TableCell>
+                <TableCell className="text-center">{data.passedCounts['c3-odd'] || 0}</TableCell>
+                <TableCell className="text-center">{data.passedCounts['c3-full'] || 0}</TableCell>
+                <TableCell className="text-center">{data.passedCounts['c4-odd'] || 0}</TableCell>
+                <TableCell className="text-center">{data.passedCounts['c4-full'] || 0}</TableCell>
+                <TableCell className="text-center">{data.passedCounts['c5-full'] || 0}</TableCell>
+                
+                {/* Programming counts */}
+                <TableCell className="text-center">{data.passedCounts['p1'] || 0}</TableCell>
+                <TableCell className="text-center">{data.passedCounts['p2'] || 0}</TableCell>
+                <TableCell className="text-center">{data.passedCounts['p3'] || 0}</TableCell>
+                <TableCell className="text-center">{data.passedCounts['p3'] || 0}</TableCell>
+                <TableCell className="text-center">{data.passedCounts['p4-mad/fsd'] || 0}</TableCell>
+                <TableCell className="text-center">{data.passedCounts['p4-ds'] || 0}</TableCell>
+                
+                {/* Levels Reached */}
+                <TableCell className="text-center bg-yellow-50">{data.levelsReached?.lx || 0}</TableCell>
+                <TableCell className="text-center bg-yellow-50">{data.levelsReached?.sx || 0}</TableCell>
+                <TableCell className="text-center bg-yellow-50">{data.levelsReached?.ax || 0}</TableCell>
+                <TableCell className="text-center bg-yellow-50">{data.levelsReached?.px || 0}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  };
+
+  // Render raw marks table
+  const renderRawMarksTable = () => {
+    if (isLoading) {
+      return <Skeleton className="h-96 w-full" />;
+    }
+
+    if (rawMarksData.length === 0) {
+      return (
+        <Alert>
+          <Info className="h-5 w-5" />
+          <AlertTitle>No Data</AlertTitle>
+          <AlertDescription>No marks data available for the selected filters.</AlertDescription>
+        </Alert>
+      );
+    }
+
+    return (
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>USN</TableHead>
+              <TableHead>Student Name</TableHead>
+              <TableHead>Subject Code</TableHead>
+              <TableHead>Subject Name</TableHead>
+              <TableHead className="text-center">IA 1</TableHead>
+              <TableHead className="text-center">IA 2</TableHead>
+              <TableHead className="text-center">Total</TableHead>
+              <TableHead className="text-center">Passing Marks</TableHead>
+              <TableHead className="text-center">Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rawMarksData.map((item, idx) => {
+              const total = (item.mark.ia1_50 || 0) + (item.mark.ia2_50 || 0);
+              const passingMarks = getTYLPassingMarks(item.mark.subjectCode);
+              const passed = total >= passingMarks;
+              
+              return (
+                <TableRow key={idx}>
+                  <TableCell className="font-mono">{item.mark.usn || item.profile.admissionId}</TableCell>
+                  <TableCell>{item.mark.studentName || item.profile.fullName}</TableCell>
+                  <TableCell className="font-mono">{item.mark.subjectCode}</TableCell>
+                  <TableCell>{item.mark.subjectName}</TableCell>
+                  <TableCell className="text-center">{item.mark.ia1_50 ?? 'N/A'}</TableCell>
+                  <TableCell className="text-center">{item.mark.ia2_50 ?? 'N/A'}</TableCell>
+                  <TableCell className="text-center font-semibold">{total}</TableCell>
+                  <TableCell className="text-center">{passingMarks}</TableCell>
+                  <TableCell className={`text-center font-semibold ${passed ? 'text-green-600' : 'text-red-600'}`}>
+                    {passed ? 'Pass' : 'Fail'}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -253,225 +333,141 @@ export default function TYLAnalysisPage() {
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Select Class and TYL Subject</CardTitle>
-          <CardDescription>Choose the semester, section, and one of your assigned TYL subjects to analyze performance.</CardDescription>
+          <CardTitle>Analysis Type & Filters</CardTitle>
+          <CardDescription>Select the type of analysis and apply filters to view TYL performance data.</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-1">
-            <Label htmlFor="semester">Semester</Label>
-            <Select value={selectedSemester} onValueChange={setSelectedSemester}>
-              <SelectTrigger id="semester"><SelectValue placeholder="Select Semester" /></SelectTrigger>
-              <SelectContent>
-                {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="section">Section</Label>
-            <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedSemester}>
-              <SelectTrigger id="section"><SelectValue placeholder="Select Section" /></SelectTrigger>
-              <SelectContent>
-                {SECTIONS.map(sec => <SelectItem key={sec} value={sec}>Section {sec}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="subject">TYL Subject</Label>
-            <Select
-              value={selectedSubject?.code || ""}
-              onValueChange={(code) => setSelectedSubject(assignedSubjectsForClass.find(s => s.code === code) || null)}
-              disabled={!selectedSection || isLoadingAssignedSubjects || assignedSubjectsForClass.length === 0}
-            >
-              <SelectTrigger id="subject">
-                 <SelectValue placeholder={isLoadingAssignedSubjects ? "Loading subjects..." : (assignedSubjectsForClass.length === 0 && selectedSection ? "No TYL subjects assigned" : "Select TYL Subject")} />
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Analysis Type</Label>
+            <Select value={analysisType} onValueChange={(value) => {
+              setAnalysisType(value as 'department' | 'section' | 'batch' | 'raw');
+              setAnalysisData([]);
+              setRawMarksData([]);
+            }}>
+              <SelectTrigger>
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {assignedSubjectsForClass.length > 0 ? (
-                    assignedSubjectsForClass.map(sub => <SelectItem key={sub.code} value={sub.code}>{sub.name} ({sub.code})</SelectItem>)
-                ) : (
-                     <SelectItem value="-" disabled>
-                      {isLoadingAssignedSubjects ? "Loading..." : (selectedSemester && selectedSection ? "No TYL subjects assigned for this class" : "Select semester & section first")}
-                    </SelectItem>
-                )}
+                <SelectItem value="department">Department-wise Analysis</SelectItem>
+                <SelectItem value="section">Section-wise Analysis</SelectItem>
+                <SelectItem value="batch">Batch-wise/Year-wise Analysis</SelectItem>
+                <SelectItem value="raw">Raw Marks View</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {analysisType !== 'department' && (
+              <div className="space-y-1">
+                <Label>Department</Label>
+                <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+                  <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
+                  <SelectContent>
+                    {DEPARTMENTS.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {analysisType === 'section' && (
+              <div className="space-y-1">
+                <Label>Section</Label>
+                <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedDepartment}>
+                  <SelectTrigger><SelectValue placeholder="Select Section" /></SelectTrigger>
+                  <SelectContent>
+                    {SECTIONS.map(sec => <SelectItem key={sec} value={sec}>Section {sec}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {analysisType === 'batch' && (
+              <div className="space-y-1">
+                <Label>Year</Label>
+                <Select value={selectedYear} onValueChange={setSelectedYear} disabled={!selectedDepartment}>
+                  <SelectTrigger><SelectValue placeholder="Select Year" /></SelectTrigger>
+                  <SelectContent>
+                    {YEARS.map(year => <SelectItem key={year} value={year}>Year {year}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {analysisType === 'raw' && (
+              <>
+                <div className="space-y-1">
+                  <Label>Section</Label>
+                  <Select value={selectedSection || 'all'} onValueChange={(value) => setSelectedSection(value === 'all' ? '' : value)}>
+                    <SelectTrigger><SelectValue placeholder="All Sections" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sections</SelectItem>
+                      {SECTIONS.map(sec => <SelectItem key={sec} value={sec}>Section {sec}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>TYL Subject</Label>
+                  <Select value={selectedSubjectCode} onValueChange={setSelectedSubjectCode} required>
+                    <SelectTrigger><SelectValue placeholder="Select Subject" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="a1">A1 - Aptitude</SelectItem>
+                      <SelectItem value="a2">A2 - Aptitude</SelectItem>
+                      <SelectItem value="a3">A3 - Aptitude</SelectItem>
+                      <SelectItem value="a4">A4 - Aptitude</SelectItem>
+                      <SelectItem value="l1">L1 - Language</SelectItem>
+                      <SelectItem value="l2">L2 - Language</SelectItem>
+                      <SelectItem value="l3">L3 - Language</SelectItem>
+                      <SelectItem value="l4">L4 - Language</SelectItem>
+                      <SelectItem value="s1">S1 - Soft Skills</SelectItem>
+                      <SelectItem value="s2">S2 - Soft Skills</SelectItem>
+                      <SelectItem value="s3">S3 - Soft Skills</SelectItem>
+                      <SelectItem value="s4">S4 - Soft Skills</SelectItem>
+                      <SelectItem value="p1">P1 - Programming (C)</SelectItem>
+                      <SelectItem value="p2">P2 - Programming (Python)</SelectItem>
+                      <SelectItem value="p3">P3 - Programming</SelectItem>
+                      <SelectItem value="p4">P4 - Programming</SelectItem>
+                      <SelectItem value="c2">C2 - Core</SelectItem>
+                      <SelectItem value="c3">C3 - Core</SelectItem>
+                      <SelectItem value="c4">C4 - Core</SelectItem>
+                      <SelectItem value="c5">C5 - Core</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+
+            <div className="space-y-1">
+              <Label>Semester (Optional)</Label>
+              <Select value={selectedSemester || 'all'} onValueChange={(value) => setSelectedSemester(value === 'all' ? '' : value)}>
+                <SelectTrigger><SelectValue placeholder="All Semesters" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Semesters</SelectItem>
+                  {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {selectionMade && (
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle>Analysis for {selectedSubject?.name} ({selectedSubject?.code}) - Sem {selectedSemester}, Sec {selectedSection}</CardTitle>
-            <CardDescription>Overview of student performance based on entered marks.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoading && !analysisSummary ? (
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-md" />)}
-                 </div>
-            ) : analysisSummary && analysisSummary.count > 0 ? (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                  <Card className="bg-muted/30">
-                   <CardHeader className="pb-2">
-                     <CardTitle className="text-base font-medium flex items-center justify-between">
-                       Total Students <Users className="h-4 w-4 text-muted-foreground" />
-                     </CardTitle>
-                   </CardHeader>
-                   <CardContent>
-                     <div className="text-2xl font-bold">{analysisSummary.count}</div>
-                     <p className="text-xs text-muted-foreground">students with recorded marks</p>
-                   </CardContent>
-                 </Card>
-                 {Object.entries(analysisSummary.averages).map(([key, avg]) => (
-                   <Card key={key} className="bg-muted/30">
-                     <CardHeader className="pb-2">
-                       <CardTitle className="text-base font-medium flex items-center justify-between">
-                         Avg. {key.replace('_50', ' (50)').replace('_20', ' (20)').replace('ia', 'IA ').replace('assignment', 'Assign ')}
-                         <Percent className="h-4 w-4 text-muted-foreground" />
-                       </CardTitle>
-                     </CardHeader>
-                     <CardContent>
-                        <div className="text-2xl font-bold">{avg}</div>
-                        <p className="text-xs text-muted-foreground">average score</p>
-                     </CardContent>
-                   </Card>
-                 ))}
-                 {Object.entries(analysisSummary.passPercentages).map(([key, passRate]) => (
-                   <Card key={`pass-${key}`} className="bg-muted/30">
-                     <CardHeader className="pb-2">
-                       <CardTitle className="text-base font-medium flex items-center justify-between">
-                         Pass % ({key.replace('_50', '').replace('_20', '').replace('ia', 'IA ').replace('assignment', 'Assign ')})
-                          <CheckSquare className="h-4 w-4 text-muted-foreground" />
-                       </CardTitle>
-                     </CardHeader>
-                     <CardContent>
-                        <div className="text-2xl font-bold">{passRate}</div>
-                         <p className="text-xs text-muted-foreground">passing threshold (40%)</p>
-                     </CardContent>
-                   </Card>
-                 ))}
-                  <Card className="bg-success/10">
-                   <CardHeader className="pb-2">
-                     <CardTitle className="text-base font-medium flex items-center justify-between">
-                       High Performers <TrendingUp className="h-4 w-4 text-success" />
-                     </CardTitle>
-                   </CardHeader>
-                   <CardContent>
-                     <div className="text-2xl font-bold">{analysisSummary.highPerformers}</div>
-                     <p className="text-xs text-success/80">students significantly above avg. IA</p>
-                   </CardContent>
-                 </Card>
-                 <Card className="bg-destructive/10">
-                   <CardHeader className="pb-2">
-                     <CardTitle className="text-base font-medium flex items-center justify-between">
-                       Low Performers <TrendingDown className="h-4 w-4 text-destructive" />
-                     </CardTitle>
-                   </CardHeader>
-                   <CardContent>
-                     <div className="text-2xl font-bold">{analysisSummary.lowPerformers}</div>
-                     <p className="text-xs text-destructive/80">students significantly below avg. IA</p>
-                   </CardContent>
-                 </Card>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-                  {averageScoresChartData.length > 0 && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Average Scores by Assessment</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                          <BarChart data={averageScoresChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                            <YAxis tickLine={false} axisLine={false} domain={[0, 50]}/>
-                            <Tooltip content={<ChartTooltipContent formatter={(value, name, props) => {
-                                return (
-                                  <div className="flex flex-col">
-                                    <span className="font-medium">{props.payload.name}</span>
-                                    <span className="text-muted-foreground">Avg: {value} / {props.payload['Max Marks']}</span>
-                                  </div>
-                                )
-                              }} />} 
-                            />
-                            <Legend />
-                            <Bar dataKey="Average Score" fill="var(--color-averageScore)" radius={4} />
-                          </BarChart>
-                        </ChartContainer>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {passPercentageChartData.length > 0 && (
-                     <Card>
-                      <CardHeader>
-                        <CardTitle>Pass Percentage by Assessment</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                          <BarChart data={passPercentageChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                            <YAxis tickLine={false} axisLine={false} domain={[0, 100]} unit="%"/>
-                            <Tooltip content={<ChartTooltipContent />} />
-                             <Legend />
-                            <Bar dataKey="Pass %" fill="var(--color-passPercentage)" radius={4} />
-                          </BarChart>
-                        </ChartContainer>
-                      </CardContent>
-                    </Card>
-                  )}
-                </div>
-                
-                {distributionChartData.length > 0 && (
-                    <div className="mt-8">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Marks Distribution by Assessment</CardTitle>
-                                <CardDescription>Number of students in different mark ranges for each assessment.</CardDescription>
-                            </CardHeader>
-                            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                {distributionChartData.map(assessment => (
-                                    <div key={assessment.assessment}>
-                                        <h3 className="font-semibold text-center mb-2">{assessment.assessment}</h3>
-                                        <ChartContainer config={chartConfig} className="h-[250px] w-full">
-                                            <BarChart data={assessment.data} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                                                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                                                <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} />
-                                                <YAxis dataKey="range" type="category" tickLine={false} axisLine={false} width={80} />
-                                                <Tooltip content={<ChartTooltipContent />} />
-                                                <Bar dataKey="count" fill="var(--color-count)" radius={4} />
-                                            </BarChart>
-                                        </ChartContainer>
-                                    </div>
-                                ))}
-                            </CardContent>
-                        </Card>
-                    </div>
-                )}
-
-
-              </>
-            ) : (
-               initialLoadComplete && ( 
-                  <p className="text-center py-8 text-muted-foreground">No performance data available for this selection. Ensure marks have been entered for students in this class and subject.</p>
-               )
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-       {!selectionMade && !isLoading && (
-         <Alert className="mt-6 bg-accent/20 border-accent text-accent-foreground">
-             <Info className="h-5 w-5 text-accent" />
-            <AlertTitle>Select Class for Analysis</AlertTitle>
-            <AlertDescription>Please select a semester, section, and one of your assigned TYL subjects above to view the performance analysis.</AlertDescription>
-        </Alert>
-       )}
+      <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle>
+            {analysisType === 'department' && 'Department-wise TYL Analysis'}
+            {analysisType === 'section' && 'Section-wise TYL Analysis'}
+            {analysisType === 'batch' && 'Batch-wise/Year-wise TYL Analysis'}
+            {analysisType === 'raw' && 'Raw TYL Marks'}
+          </CardTitle>
+          <CardDescription>
+            {analysisType === 'raw' 
+              ? 'View raw marks for students in the selected TYL subject. No calculations or analysis performed.'
+              : 'Performance analysis showing number of students who passed each TYL subject category.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {analysisType === 'raw' ? renderRawMarksTable() : renderAnalysisTable()}
+        </CardContent>
+      </Card>
     </div>
   );
 }
-

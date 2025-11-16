@@ -17,14 +17,10 @@ import { fetchFacultyAssignmentsForClassAction } from '@/actions/faculty-actions
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from '@/components/ui/skeleton';
 
+import { isTYLSubject } from '@/lib/tyl-config';
+
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
-
-// Helper function to check if a subject code is a TYL subject
-const isTYLSubject = (subjectCode: string): boolean => {
-  const tylPattern = /^(a[1-4]|c[1-4]|l[1-3]|p[1-3]|s[1-3])$/i;
-  return tylPattern.test(subjectCode.toLowerCase());
-};
 
 interface StudentMarksEntryData {
   profile: StudentProfile;
@@ -105,6 +101,7 @@ export default function TYLMarksEntryPage() {
             semester: parseInt(selectedSemester),
             ia1_50: null,
             ia2_50: null,
+            // TYL subjects don't have assignments
             assignment1_20: null,
             assignment2_20: null,
           };
@@ -143,12 +140,12 @@ export default function TYLMarksEntryPage() {
   }, [selectedSemester, selectedSection, selectedSubject, user]);
 
 
-  const handleMarkChange = (studentUserId: string, field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50' | 'assignment1_20' | 'assignment2_20'>, value: string) => {
+  const handleMarkChange = (studentUserId: string, field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50'>, value: string) => {
     const numericValue = value === '' || value === null || isNaN(parseFloat(value)) ? null : parseFloat(value);
-    const maxValues: Record<string, number> = { ia1_50: 50, ia2_50: 50, assignment1_20: 20, assignment2_20: 20 };
+    const maxValues: Record<string, number> = { ia1_50: 50, ia2_50: 50 };
 
     if (numericValue !== null && (numericValue < 0 || (maxValues[field] !== undefined && numericValue > maxValues[field]))) {
-      toast({ title: "Invalid Mark", description: `Mark for ${field.replace('_', ' ').replace('ia', 'IA').replace('assignment', 'Assignment')} must be between 0 and ${maxValues[field]}.`, variant: "destructive" });
+      toast({ title: "Invalid Mark", description: `Mark for ${field.replace('_', ' ').replace('ia', 'IA')} must be between 0 and ${maxValues[field]}.`, variant: "destructive" });
       return; 
     }
 
@@ -205,6 +202,7 @@ export default function TYLMarksEntryPage() {
         semester: parseInt(selectedSemester),
         ia1_50: null,
         ia2_50: null,
+        // TYL subjects don't have assignments
         assignment1_20: null,
         assignment2_20: null,
       }
@@ -216,6 +214,8 @@ export default function TYLMarksEntryPage() {
     setStudentsMarksEntries(prev => prev.filter(entry => entry.profile.userId !== studentUserId));
   };
 
+  // Student names are auto-fetched from database, so we don't need this handler for TYL
+  // But keeping it for USN updates if needed for manually added students
   const handleStudentDetailChange = (studentUserId: string, field: 'admissionId' | 'fullName', value: string) => {
      setStudentsMarksEntries(prev => 
       prev.map(entry => {
@@ -275,30 +275,33 @@ export default function TYLMarksEntryPage() {
   
   const calculateSummary = useMemo(() => {
     const marksList = studentsMarksEntries.map(s => s.marks);
-    if (marksList.length === 0) return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
+    if (marksList.length === 0) return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', totalAvg: 'N/A' };
     
-    const validForCalc = marksList.filter(m => m.ia1_50 !== null || m.ia2_50 !== null || m.assignment1_20 !== null || m.assignment2_20 !== null);
+    const validForCalc = marksList.filter(m => m.ia1_50 !== null || m.ia2_50 !== null);
     const totalStudentsInList = studentsMarksEntries.length;
     
     if (validForCalc.length === 0 && totalStudentsInList > 0) {
-        return { count: totalStudentsInList, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
+        return { count: totalStudentsInList, avgIA1: 'N/A', avgIA2: 'N/A', totalAvg: 'N/A' };
     }
     if (totalStudentsInList === 0) {
-        return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', avgAssign1: 'N/A', avgAssign2: 'N/A' };
+        return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', totalAvg: 'N/A' };
     }
 
-    const sum = (field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50' | 'assignment1_20' | 'assignment2_20'>) => 
+    const sum = (field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50'>) => 
         validForCalc.reduce((acc, m) => acc + (typeof m[field] === 'number' ? m[field] as number : 0), 0);
     
-    const numValid = (field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50' | 'assignment1_20' | 'assignment2_20'>) => 
+    const numValid = (field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50'>) => 
         validForCalc.filter(m => typeof m[field] === 'number').length;
+
+    const avgIA1 = numValid('ia1_50') > 0 ? sum('ia1_50') / numValid('ia1_50') : 0;
+    const avgIA2 = numValid('ia2_50') > 0 ? sum('ia2_50') / numValid('ia2_50') : 0;
+    const totalAvg = (avgIA1 + avgIA2).toFixed(2);
 
     return {
         count: totalStudentsInList,
-        avgIA1: numValid('ia1_50') > 0 ? (sum('ia1_50') / numValid('ia1_50')).toFixed(2) : 'N/A',
-        avgIA2: numValid('ia2_50') > 0 ? (sum('ia2_50') / numValid('ia2_50')).toFixed(2) : 'N/A',
-        avgAssign1: numValid('assignment1_20') > 0 ? (sum('assignment1_20') / numValid('assignment1_20')).toFixed(2) : 'N/A',
-        avgAssign2: numValid('assignment2_20') > 0 ? (sum('assignment2_20') / numValid('assignment2_20')).toFixed(2) : 'N/A',
+        avgIA1: numValid('ia1_50') > 0 ? avgIA1.toFixed(2) : 'N/A',
+        avgIA2: numValid('ia2_50') > 0 ? avgIA2.toFixed(2) : 'N/A',
+        totalAvg: (avgIA1 > 0 || avgIA2 > 0) ? totalAvg : 'N/A',
     };
   }, [studentsMarksEntries]);
 
@@ -391,11 +394,9 @@ export default function TYLMarksEntryPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[180px] sticky left-0 bg-card z-10">USN</TableHead>
-                      <TableHead className="w-[200px] sticky left-[180px] bg-card z-10">Student Name</TableHead>
+                      <TableHead className="w-[250px] sticky left-[180px] bg-card z-10">Student Name</TableHead>
                       <TableHead className="text-center w-28">IA 1 (50)</TableHead>
                       <TableHead className="text-center w-28">IA 2 (50)</TableHead>
-                      <TableHead className="text-center w-32">Assign 1 (20)</TableHead>
-                      <TableHead className="text-center w-32">Assign 2 (20)</TableHead>
                       <TableHead className="text-center w-20">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -412,17 +413,13 @@ export default function TYLMarksEntryPage() {
                                 placeholder="Enter USN"
                             />
                         </TableCell>
-                        <TableCell className="font-medium sticky left-[180px] bg-card z-10 px-1 py-1 w-[200px]">
-                           <Input
-                                type="text"
-                                className="w-full text-sm bg-background h-9"
-                                value={entry.marks.studentName}
-                                onChange={(e) => handleStudentDetailChange(entry.profile.userId, 'fullName', e.target.value)}
-                                disabled={isSaving || !entry.profile.userId.startsWith('temp-')}
-                                placeholder="Enter Name"
-                            />
+                        <TableCell className="font-medium sticky left-[180px] bg-card z-10 px-1 py-1 w-[250px]">
+                           {/* Student name is auto-fetched from database - read-only */}
+                           <div className="w-full text-sm bg-muted/50 h-9 flex items-center px-3 rounded-md border border-transparent">
+                             {entry.marks.studentName || entry.profile.fullName || 'N/A'}
+                           </div>
                         </TableCell>
-                        {(['ia1_50', 'ia2_50', 'assignment1_20', 'assignment2_20'] as const).map(field => (
+                        {(['ia1_50', 'ia2_50'] as const).map(field => (
                           <TableCell key={field} className="px-1 py-1">
                             <Input
                               type="number"
@@ -430,7 +427,7 @@ export default function TYLMarksEntryPage() {
                               value={entry.marks?.[field] === null || entry.marks?.[field] === undefined ? '' : String(entry.marks?.[field])}
                               onChange={(e) => handleMarkChange(entry.profile.userId, field, e.target.value)}
                               min="0"
-                              max={field.includes('50') ? "50" : "20"}
+                              max="50"
                               disabled={isSaving}
                               placeholder="N/A"
                             />
@@ -474,7 +471,7 @@ export default function TYLMarksEntryPage() {
                     <CardDescription>Overall statistics for {selectedSubject?.name} - Section {selectedSection}. (Based on currently displayed/entered marks)</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                         <div className="bg-muted/50 p-4 rounded-lg">
                             <p className="text-sm text-muted-foreground">Students</p>
                             <p className="text-2xl font-bold">{calculateSummary.count}</p>
@@ -488,12 +485,8 @@ export default function TYLMarksEntryPage() {
                             <p className="text-2xl font-bold">{calculateSummary.avgIA2}</p>
                         </div>
                          <div className="bg-muted/50 p-4 rounded-lg">
-                            <p className="text-sm text-muted-foreground">Avg. Assign 1</p>
-                            <p className="text-2xl font-bold">{calculateSummary.avgAssign1}</p>
-                        </div>
-                         <div className="bg-muted/50 p-4 rounded-lg">
-                            <p className="text-sm text-muted-foreground">Avg. Assign 2</p>
-                            <p className="text-2xl font-bold">{calculateSummary.avgAssign2}</p>
+                            <p className="text-sm text-muted-foreground">Total Avg</p>
+                            <p className="text-2xl font-bold">{calculateSummary.totalAvg}</p>
                         </div>
                     </div>
                 </CardContent>
