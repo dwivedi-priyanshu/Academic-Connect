@@ -28,7 +28,39 @@ import { DEPARTMENTS } from '@/lib/subjects'; // Import DEPARTMENTS
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
-// ALL_SUBJECTS_BY_SEMESTER is removed as subjects are now dynamic
+
+// TYL (Third Year Lateral) Predefined Subjects by Category
+const TYL_SUBJECTS = {
+  aptitude: [
+    { code: "a1", name: "A1" },
+    { code: "a2", name: "A2" },
+    { code: "a3", name: "A3" },
+    { code: "a4", name: "A4" },
+  ],
+  core: [
+    { code: "c1", name: "C1" },
+    { code: "c2", name: "C2" },
+    { code: "c3", name: "C3" },
+    { code: "c4", name: "C4" },
+  ],
+  language: [
+    { code: "l1", name: "Language 1" },
+    { code: "l2", name: "Language 2" },
+    { code: "l3", name: "Language 3" },
+  ],
+  programming: [
+    { code: "p1", name: "Programming 1" },
+    { code: "p2", name: "Programming 2" },
+    { code: "p3", name: "Programming 3" },
+  ],
+  "soft skills": [
+    { code: "s1", name: "Soft Skills 1" },
+    { code: "s2", name: "Soft Skills 2" },
+    { code: "s3", name: "Soft Skills 3" },
+  ],
+};
+
+type TYLSubjectCategory = keyof typeof TYL_SUBJECTS;
 
 export default function AdminAssignmentsPage() {
   const { user } = useAuth();
@@ -48,6 +80,11 @@ export default function AdminAssignmentsPage() {
   const [isLoadingAvailableSubjects, setIsLoadingAvailableSubjects] = useState(false);
   const [selectedSubjectInfo, setSelectedSubjectInfo] = useState<{ code: string; name: string } | null>(null);
   const [isSubmittingSub, setIsSubmittingSub] = useState(false);
+  
+  // TYL (Third Year Lateral) State
+  const [isTYLSelected, setIsTYLSelected] = useState(false);
+  const [selectedTYLCategory, setSelectedTYLCategory] = useState<TYLSubjectCategory | ''>('');
+  const [selectedTYLSubject, setSelectedTYLSubject] = useState<{ code: string; name: string } | null>(null);
 
   // MOOC Coordinator State
   const [moocAssignments, setMoocAssignments] = useState<MoocCoordinatorAssignment[]>([]);
@@ -85,9 +122,9 @@ export default function AdminAssignmentsPage() {
     }
   }, [user, loadInitialData]);
 
-  // Effect to load subjects for assignment when department or semester changes
+  // Effect to load subjects for assignment when department or semester changes (only if not TYL)
   useEffect(() => {
-    if (selectedDepartmentSub && selectedSemesterSub) {
+    if (selectedDepartmentSub && selectedSemesterSub && !isTYLSelected) {
       setIsLoadingAvailableSubjects(true);
       fetchSubjectsByDepartmentAndSemesterAction(selectedDepartmentSub, parseInt(selectedSemesterSub))
         .then(subjects => {
@@ -99,34 +136,60 @@ export default function AdminAssignmentsPage() {
           setAvailableSubjectsForAssignment([]);
         })
         .finally(() => setIsLoadingAvailableSubjects(false));
+    } else if (isTYLSelected) {
+      // Clear regular subjects when TYL is selected
+      setAvailableSubjectsForAssignment([]);
+      setSelectedSubjectInfo(null);
     } else {
       setAvailableSubjectsForAssignment([]);
       setSelectedSubjectInfo(null);
     }
-  }, [selectedDepartmentSub, selectedSemesterSub, toast]);
+  }, [selectedDepartmentSub, selectedSemesterSub, isTYLSelected, toast]);
+  
+  // Reset TYL selections when TYL mode is toggled
+  useEffect(() => {
+    if (!isTYLSelected) {
+      setSelectedTYLCategory('');
+      setSelectedTYLSubject(null);
+    } else {
+      setSelectedSubjectInfo(null);
+    }
+  }, [isTYLSelected]);
 
 
   // Subject Assignment Handlers
   const handleAddSubjectAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFacultySub || !selectedSubjectInfo || !selectedSemesterSub || !selectedSectionSub || !selectedDepartmentSub) {
+    
+    // Determine which subject to use (regular or TYL)
+    const subjectToAssign = isTYLSelected ? selectedTYLSubject : selectedSubjectInfo;
+    
+    if (!selectedFacultySub || !subjectToAssign || !selectedSemesterSub || !selectedSectionSub || !selectedDepartmentSub) {
       toast({ title: "Missing Information", description: "Please select faculty, department, semester, subject, and section.", variant: "destructive" });
       return;
     }
+    
+    if (isTYLSelected && !selectedTYLCategory) {
+      toast({ title: "Missing Information", description: "Please select a TYL category.", variant: "destructive" });
+      return;
+    }
+    
     setIsSubmittingSub(true);
     try {
       const newAssignment = await addFacultySubjectAssignmentAction({
         facultyId: selectedFacultySub,
-        subjectCode: selectedSubjectInfo.code,
-        subjectName: selectedSubjectInfo.name, // Subject name is from the selected Subject object
+        subjectCode: subjectToAssign.code,
+        subjectName: subjectToAssign.name,
         semester: parseInt(selectedSemesterSub),
         section: selectedSectionSub,
-        // department is implicitly part of the subject selection now, not stored in FacultySubjectAssignment directly
       });
       setSubjectAssignments(prev => [...prev, newAssignment]);
       toast({ title: "Success", description: "Subject assignment added.", className: "bg-success text-success-foreground" });
       setSelectedFacultySub('');
       setSelectedSubjectInfo(null);
+      setSelectedTYLSubject(null);
+      setSelectedTYLCategory('');
+      setIsTYLSelected(false);
       // Keep department, semester, section for potentially more assignments to same class
     } catch (error) {
       toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
@@ -257,7 +320,7 @@ export default function AdminAssignmentsPage() {
             <CardContent>
               {isLoadingFaculty ? <FormSkeleton /> : (
                 <form onSubmit={handleAddSubjectAssignment} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div className={`grid grid-cols-1 md:grid-cols-2 ${isTYLSelected ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-4`}>
                     <div className="space-y-1">
                       <Label htmlFor="facultySub">Faculty</Label>
                       <Select value={selectedFacultySub} onValueChange={setSelectedFacultySub} required>
@@ -278,33 +341,92 @@ export default function AdminAssignmentsPage() {
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="semesterSub">Semester</Label>
-                      <Select value={selectedSemesterSub} onValueChange={v => {setSelectedSemesterSub(v); setSelectedSubjectInfo(null);}} required disabled={!selectedDepartmentSub}>
+                      <Select value={selectedSemesterSub} onValueChange={v => {setSelectedSemesterSub(v); setSelectedSubjectInfo(null); setIsTYLSelected(false); setSelectedTYLCategory(''); setSelectedTYLSubject(null);}} required disabled={!selectedDepartmentSub}>
                         <SelectTrigger id="semesterSub"><SelectValue placeholder="Select Semester" /></SelectTrigger>
                         <SelectContent>{SEMESTERS.map(s => <SelectItem key={s} value={s}>Sem {s}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
-                     <div className="space-y-1">
-                      <Label htmlFor="subjectSub">Subject</Label>
-                      <Select 
-                        value={selectedSubjectInfo?.code || ''} 
-                        onValueChange={code => {
-                            const subject = availableSubjectsForAssignment.find(s => s.subjectCode === code);
-                            setSelectedSubjectInfo(subject ? { code: subject.subjectCode, name: subject.subjectName } : null);
-                        }} 
-                        required 
-                        disabled={!selectedSemesterSub || isLoadingAvailableSubjects || availableSubjectsForAssignment.length === 0}
-                      >
-                        <SelectTrigger id="subjectSub">
+                    
+                    {/* Subject Selection: Regular or TYL */}
+                    {!isTYLSelected ? (
+                      <div className="space-y-1">
+                        <Label htmlFor="subjectSub">Subject</Label>
+                        <Select 
+                          value={selectedSubjectInfo?.code || ''} 
+                          onValueChange={code => {
+                            if (code === 'TYL') {
+                              setIsTYLSelected(true);
+                              setSelectedSubjectInfo(null);
+                            } else {
+                              const subject = availableSubjectsForAssignment.find(s => s.subjectCode === code);
+                              setSelectedSubjectInfo(subject ? { code: subject.subjectCode, name: subject.subjectName } : null);
+                            }
+                          }} 
+                          required 
+                          disabled={!selectedSemesterSub || isLoadingAvailableSubjects}
+                        >
+                          <SelectTrigger id="subjectSub">
                             <SelectValue placeholder={
-                                isLoadingAvailableSubjects ? "Loading subjects..." :
-                                (selectedDepartmentSub && selectedSemesterSub && availableSubjectsForAssignment.length === 0 ? "No subjects for dept/sem" : "Select Subject")
+                              isLoadingAvailableSubjects ? "Loading subjects..." :
+                              (selectedDepartmentSub && selectedSemesterSub && availableSubjectsForAssignment.length === 0 ? "No subjects for dept/sem" : "Select Subject")
                             } />
-                        </SelectTrigger>
-                        <SelectContent>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="TYL">TYL</SelectItem>
                             {availableSubjectsForAssignment.map(s => <SelectItem key={s.subjectCode} value={s.subjectCode}>{s.subjectName} ({s.subjectCode})</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-1">
+                          <Label htmlFor="tylCategory">TYL Category</Label>
+                          <Select 
+                            value={selectedTYLCategory} 
+                            onValueChange={(value) => {
+                              setSelectedTYLCategory(value as TYLSubjectCategory);
+                              setSelectedTYLSubject(null);
+                            }} 
+                            required 
+                            disabled={!selectedSemesterSub}
+                          >
+                            <SelectTrigger id="tylCategory">
+                              <SelectValue placeholder="Select Category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="aptitude">Aptitude</SelectItem>
+                              <SelectItem value="core">Core</SelectItem>
+                              <SelectItem value="language">Language</SelectItem>
+                              <SelectItem value="programming">Programming</SelectItem>
+                              <SelectItem value="soft skills">Soft Skills</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="tylSubject">TYL Subject</Label>
+                          <Select 
+                            value={selectedTYLSubject?.code || ''} 
+                            onValueChange={code => {
+                              const category = selectedTYLCategory as TYLSubjectCategory;
+                              const subject = TYL_SUBJECTS[category]?.find(s => s.code === code);
+                              setSelectedTYLSubject(subject ? { code: subject.code, name: subject.name } : null);
+                            }} 
+                            required 
+                            disabled={!selectedTYLCategory}
+                          >
+                            <SelectTrigger id="tylSubject">
+                              <SelectValue placeholder={selectedTYLCategory ? "Select Subject" : "Select category first"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {selectedTYLCategory && TYL_SUBJECTS[selectedTYLCategory as TYLSubjectCategory]?.map(s => (
+                                <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </>
+                    )}
+                    
                     <div className="space-y-1">
                       <Label htmlFor="sectionSub">Section</Label>
                       <Select value={selectedSectionSub} onValueChange={setSelectedSectionSub} required disabled={!selectedSemesterSub}>
@@ -313,9 +435,24 @@ export default function AdminAssignmentsPage() {
                       </Select>
                     </div>
                   </div>
-                  <Button type="submit" disabled={isSubmittingSub || isLoadingFaculty || isLoadingAvailableSubjects}>
-                    <PlusCircle className="mr-2" /> {isSubmittingSub ? 'Assigning...' : 'Assign Subject'}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button type="submit" disabled={isSubmittingSub || isLoadingFaculty || (isTYLSelected ? false : isLoadingAvailableSubjects)}>
+                      <PlusCircle className="mr-2" /> {isSubmittingSub ? 'Assigning...' : 'Assign Subject'}
+                    </Button>
+                    {isTYLSelected && (
+                      <Button 
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setIsTYLSelected(false);
+                          setSelectedTYLCategory('');
+                          setSelectedTYLSubject(null);
+                        }}
+                      >
+                        Cancel TYL
+                      </Button>
+                    )}
+                  </div>
                 </form>
               )}
             </CardContent>

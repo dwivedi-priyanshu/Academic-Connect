@@ -56,7 +56,9 @@ const navItems: NavItem[] = [
   // Faculty specific
   { href: '/faculty/student-search', label: 'Student Search', icon: UserSearch, roles: ['Faculty'] }, 
   { href: '/faculty/marks-entry', label: 'Marks Entry', icon: Edit3, roles: ['Faculty'] },
+  { href: '/faculty/tyl-marks-entry', label: 'TYL Marks Entry', icon: Edit3, roles: ['Faculty'] },
   { href: '/faculty/class-performance', label: 'Class Performance', icon: BarChart2, roles: ['Faculty'] },
+  { href: '/faculty/tyl-analysis', label: 'TYL Analysis', icon: BarChart2, roles: ['Faculty'] },
   { href: '/faculty/approvals', label: 'Approvals', icon: CheckSquare, roles: ['Faculty'] },
   { href: '/faculty/approved-projects', label: 'Project Repository', icon: LibraryBig, roles: ['Faculty'] },
   { href: '/faculty/mooc-repository', label: 'MOOC Repository', icon: Archive, roles: ['Faculty'] }, 
