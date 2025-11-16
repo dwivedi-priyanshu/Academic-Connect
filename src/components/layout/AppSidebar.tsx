@@ -68,6 +68,7 @@ const navItems: NavItem[] = [
   { href: '/admin/users', label: 'User Management', icon: ShieldCheck, roles: ['Admin'] },
   { href: '/admin/assignments', label: 'Assignments', icon: Settings2, roles: ['Admin'] }, 
   { href: '/admin/subject-management', label: 'Subject Management', icon: BookCopy, roles: ['Admin'] },
+  { href: '/admin/promote-students', label: 'Promote Students', icon: GraduationCap, roles: ['Admin'] },
 ];
 
 export function AppSidebar() {

@@ -51,15 +51,12 @@ export default function TYLAnalysisPage() {
   // Load analysis data based on type
   useEffect(() => {
     const loadAnalysisData = async () => {
-      // Semester is mandatory for all analysis types
-      if (!selectedSemester) {
-        setAnalysisData([]);
-        setRawMarksData([]);
-        return;
-      }
-
       if (analysisType === 'raw') {
-        // Load raw marks - no subject filter needed, we'll show all TYL subjects
+        // Semester is mandatory for raw marks view
+        if (!selectedSemester) {
+          setRawMarksData([]);
+          return;
+        }
         setIsLoading(true);
         try {
           const data = await fetchRawTYLMarksAction({
@@ -78,16 +75,24 @@ export default function TYLAnalysisPage() {
         }
       } else {
         // Load analysis data
+        if (analysisType === 'section' || analysisType === 'batch') {
+          // Semester is mandatory for section and batch analysis
+          if (!selectedSemester) {
+            setAnalysisData([]);
+            return;
+          }
+        }
+
         setIsLoading(true);
         try {
           let data: TYLAnalysisData[] = [];
           
           if (analysisType === 'department') {
-            // Load for all departments
+            // Load for all departments - semester is optional
             for (const dept of DEPARTMENTS) {
               const result = await calculateTYLAnalysisAction({
                 department: dept,
-                semester: parseInt(selectedSemester),
+                semester: selectedSemester ? parseInt(selectedSemester) : undefined,
               });
               data.push(result);
             }
@@ -545,10 +550,11 @@ export default function TYLAnalysisPage() {
             <TabsContent value="department" className="p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <Label>Semester <span className="text-destructive">*</span></Label>
-                  <Select value={selectedSemester} onValueChange={setSelectedSemester} required>
-                    <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
+                  <Label>Semester (Optional)</Label>
+                  <Select value={selectedSemester || 'all'} onValueChange={(value) => setSelectedSemester(value === 'all' ? '' : value)}>
+                    <SelectTrigger><SelectValue placeholder="All Semesters" /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="all">All Semesters</SelectItem>
                       {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
                     </SelectContent>
                   </Select>

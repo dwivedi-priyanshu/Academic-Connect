@@ -6,10 +6,11 @@ import {
   FACULTY_SUBJECT_ASSIGNMENTS_COLLECTION, 
   MOOC_COORDINATOR_ASSIGNMENTS_COLLECTION,
   SUBJECTS_COLLECTION, // Added
-  USERS_COLLECTION
+  USERS_COLLECTION,
+  STUDENT_PROFILES_COLLECTION
 } from '@/lib/constants';
-import type { FacultySubjectAssignment, MoocCoordinatorAssignment, User, Subject } from '@/types'; // Added Subject
-import type { Collection } from 'mongodb';
+import type { FacultySubjectAssignment, MoocCoordinatorAssignment, User, Subject, StudentProfile } from '@/types'; // Added Subject
+import type { Collection, Filter } from 'mongodb';
 import { ObjectId } from 'mongodb';
 
 // Helper to get collections
@@ -31,6 +32,11 @@ async function getUsersCollection(): Promise<Collection<User>> {
 async function getSubjectsCollection(): Promise<Collection<Subject>> {
   const { db } = await connectToDatabase();
   return db.collection<Subject>(SUBJECTS_COLLECTION);
+}
+
+async function getStudentProfilesCollection(): Promise<Collection<StudentProfile>> {
+  const { db } = await connectToDatabase();
+  return db.collection<StudentProfile>(STUDENT_PROFILES_COLLECTION);
 }
 
 
@@ -229,5 +235,96 @@ export async function deleteSubjectAction(subjectId: string): Promise<boolean> {
   } catch (error) {
     console.error('Error deleting subject:', error);
     throw new Error('Failed to delete subject.');
+  }
+}
+
+// --- Student Promotion Actions ---
+
+/**
+ * Promotes students by updating their currentSemester field.
+ * This function ONLY updates the currentSemester field and does NOT affect any marks.
+ * Marks are stored semester-wise and subject-wise, so they remain preserved.
+ * 
+ * @param department - Department/branch name
+ * @param year - Batch/year (1, 2, 3, or 4)
+ * @param currentSemester - Current semester of students to promote
+ * @param nextSemester - Target semester to promote to
+ * @returns Object with success status, count of students promoted, and any errors
+ */
+export async function promoteStudentsAction(
+  department: string,
+  year: number,
+  currentSemester: number,
+  nextSemester: number
+): Promise<{ success: boolean; promotedCount: number; message: string; errors?: string[] }> {
+  try {
+    const studentProfilesCollection = await getStudentProfilesCollection();
+    const usersCollection = await getUsersCollection();
+
+    // Validate inputs
+    if (nextSemester <= currentSemester) {
+      throw new Error('Next semester must be greater than current semester.');
+    }
+    if (nextSemester < 1 || nextSemester > 8 || currentSemester < 1 || currentSemester > 8) {
+      throw new Error('Semester must be between 1 and 8.');
+    }
+    if (year < 1 || year > 4) {
+      throw new Error('Year must be between 1 and 4.');
+    }
+
+    // Get all active student user IDs
+    const activeStudentUsers = await usersCollection.find({ role: 'Student', status: 'Active' }).project({ id: 1 }).toArray();
+    const activeStudentUserIds = activeStudentUsers
+      .map(u => String(u.id || '').trim())
+      .filter(id => id);
+
+    if (activeStudentUserIds.length === 0) {
+      return {
+        success: false,
+        promotedCount: 0,
+        message: 'No active students found in the system.',
+      };
+    }
+
+    // Find students matching the criteria
+    const query: Filter<StudentProfile> = {
+      department: department,
+      year: year,
+      currentSemester: currentSemester,
+      userId: { $in: activeStudentUserIds },
+    };
+
+    const studentsToPromote = await studentProfilesCollection.find(query).toArray();
+
+    if (studentsToPromote.length === 0) {
+      return {
+        success: false,
+        promotedCount: 0,
+        message: `No students found matching: Department: ${department}, Year: ${year}, Current Semester: ${currentSemester}`,
+      };
+    }
+
+    // Update currentSemester for all matching students
+    // IMPORTANT: Only update currentSemester field, do NOT touch any marks
+    const updateResult = await studentProfilesCollection.updateMany(
+      query,
+      { $set: { currentSemester: nextSemester } }
+    );
+
+    const promotedCount = updateResult.modifiedCount;
+
+    return {
+      success: true,
+      promotedCount: promotedCount,
+      message: `Successfully promoted ${promotedCount} student(s) from Semester ${currentSemester} to Semester ${nextSemester}. All marks have been preserved.`,
+    };
+  } catch (error) {
+    console.error('Error promoting students:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to promote students.';
+    return {
+      success: false,
+      promotedCount: 0,
+      message: errorMessage,
+    };
   }
 }
