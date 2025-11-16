@@ -17,7 +17,7 @@ import { fetchFacultyAssignmentsForClassAction } from '@/actions/faculty-actions
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from '@/components/ui/skeleton';
 
-import { isTYLSubject } from '@/lib/tyl-config';
+import { isTYLSubject, getTYLPassingMarks } from '@/lib/tyl-config';
 
 const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const SECTIONS = ["A", "B", "C", "D"];
@@ -275,35 +275,43 @@ export default function TYLMarksEntryPage() {
   
   const calculateSummary = useMemo(() => {
     const marksList = studentsMarksEntries.map(s => s.marks);
-    if (marksList.length === 0) return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', totalAvg: 'N/A' };
+    if (marksList.length === 0) return { count: 0, passed: 0, failed: 0 };
     
-    const validForCalc = marksList.filter(m => m.ia1_50 !== null || m.ia2_50 !== null);
     const totalStudentsInList = studentsMarksEntries.length;
     
-    if (validForCalc.length === 0 && totalStudentsInList > 0) {
-        return { count: totalStudentsInList, avgIA1: 'N/A', avgIA2: 'N/A', totalAvg: 'N/A' };
-    }
     if (totalStudentsInList === 0) {
-        return { count: 0, avgIA1: 'N/A', avgIA2: 'N/A', totalAvg: 'N/A' };
+        return { count: 0, passed: 0, failed: 0 };
     }
 
-    const sum = (field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50'>) => 
-        validForCalc.reduce((acc, m) => acc + (typeof m[field] === 'number' ? m[field] as number : 0), 0);
-    
-    const numValid = (field: keyof Pick<SubjectMark, 'ia1_50' | 'ia2_50'>) => 
-        validForCalc.filter(m => typeof m[field] === 'number').length;
+    // Get passing marks for the selected TYL subject
+    const subjectCode = selectedSubject?.code || '';
+    const passingMarks = subjectCode ? getTYLPassingMarks(subjectCode) : 0;
 
-    const avgIA1 = numValid('ia1_50') > 0 ? sum('ia1_50') / numValid('ia1_50') : 0;
-    const avgIA2 = numValid('ia2_50') > 0 ? sum('ia2_50') / numValid('ia2_50') : 0;
-    const totalAvg = (avgIA1 + avgIA2).toFixed(2);
+    // Calculate pass/fail counts
+    let passedCount = 0;
+    let failedCount = 0;
+
+    marksList.forEach(mark => {
+      const ia1 = typeof mark.ia1_50 === 'number' ? mark.ia1_50 : 0;
+      const ia2 = typeof mark.ia2_50 === 'number' ? mark.ia2_50 : 0;
+      const totalMarks = ia1 + ia2;
+      
+      // Only count if at least one mark is entered
+      if (mark.ia1_50 !== null || mark.ia2_50 !== null) {
+        if (totalMarks >= passingMarks) {
+          passedCount++;
+        } else {
+          failedCount++;
+        }
+      }
+    });
 
     return {
         count: totalStudentsInList,
-        avgIA1: numValid('ia1_50') > 0 ? avgIA1.toFixed(2) : 'N/A',
-        avgIA2: numValid('ia2_50') > 0 ? avgIA2.toFixed(2) : 'N/A',
-        totalAvg: (avgIA1 > 0 || avgIA2 > 0) ? totalAvg : 'N/A',
+        passed: passedCount,
+        failed: failedCount,
     };
-  }, [studentsMarksEntries]);
+  }, [studentsMarksEntries, selectedSubject]);
 
   if (!user || user.role !== 'Faculty') {
     return (
@@ -471,22 +479,18 @@ export default function TYLMarksEntryPage() {
                     <CardDescription>Overall statistics for {selectedSubject?.name} - Section {selectedSection}. (Based on currently displayed/entered marks)</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
                         <div className="bg-muted/50 p-4 rounded-lg">
-                            <p className="text-sm text-muted-foreground">Students</p>
+                            <p className="text-sm text-muted-foreground">Total Students</p>
                             <p className="text-2xl font-bold">{calculateSummary.count}</p>
                         </div>
-                        <div className="bg-muted/50 p-4 rounded-lg">
-                            <p className="text-sm text-muted-foreground">Avg. IA 1</p>
-                            <p className="text-2xl font-bold">{calculateSummary.avgIA1}</p>
+                        <div className="bg-green-50 dark:bg-green-950/20 p-4 rounded-lg border border-green-200 dark:border-green-800">
+                            <p className="text-sm text-muted-foreground">Passed</p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{calculateSummary.passed}</p>
                         </div>
-                         <div className="bg-muted/50 p-4 rounded-lg">
-                            <p className="text-sm text-muted-foreground">Avg. IA 2</p>
-                            <p className="text-2xl font-bold">{calculateSummary.avgIA2}</p>
-                        </div>
-                         <div className="bg-muted/50 p-4 rounded-lg">
-                            <p className="text-sm text-muted-foreground">Total Avg</p>
-                            <p className="text-2xl font-bold">{calculateSummary.totalAvg}</p>
+                         <div className="bg-red-50 dark:bg-red-950/20 p-4 rounded-lg border border-red-200 dark:border-red-800">
+                            <p className="text-sm text-muted-foreground">Failed</p>
+                            <p className="text-2xl font-bold text-red-600 dark:text-red-400">{calculateSummary.failed}</p>
                         </div>
                     </div>
                 </CardContent>
