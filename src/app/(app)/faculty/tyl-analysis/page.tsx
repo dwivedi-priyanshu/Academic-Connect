@@ -52,19 +52,18 @@ export default function TYLAnalysisPage() {
   useEffect(() => {
     const loadAnalysisData = async () => {
       if (analysisType === 'raw') {
-        // Semester is mandatory for raw marks view
-        if (!selectedSemester) {
-          setRawMarksData([]);
-          return;
-        }
+        // For raw marks, semester is optional - if not selected, show all semesters
+        // This allows viewing all historical marks even after students are promoted
         setIsLoading(true);
         try {
           const data = await fetchRawTYLMarksAction({
             department: selectedDepartment || undefined,
             section: selectedSection || undefined,
             year: selectedYear ? parseInt(selectedYear) : undefined,
-            semester: parseInt(selectedSemester),
+            semester: selectedSemester ? parseInt(selectedSemester) : undefined,
             // Don't filter by subjectCode - we want all TYL marks
+            // Note: fetchRawTYLMarksAction will always fetch all semesters regardless of semester filter
+            // to show complete historical data
           });
           setRawMarksData(data);
         } catch (error) {
@@ -75,20 +74,13 @@ export default function TYLAnalysisPage() {
         }
       } else {
         // Load analysis data
-        if (analysisType === 'section' || analysisType === 'batch') {
-          // Semester is mandatory for section and batch analysis
-          if (!selectedSemester) {
-            setAnalysisData([]);
-            return;
-          }
-        }
-
+        // All analysis types now show all marks across all semesters for each student
         setIsLoading(true);
         try {
           let data: TYLAnalysisData[] = [];
           
           if (analysisType === 'department') {
-            // Load for all departments - semester is optional
+            // Load for all departments - shows all marks across all semesters
             for (const dept of DEPARTMENTS) {
               const result = await calculateTYLAnalysisAction({
                 department: dept,
@@ -97,7 +89,7 @@ export default function TYLAnalysisPage() {
               data.push(result);
             }
           } else if (analysisType === 'section') {
-            // Load for all sections of selected department
+            // Load for all sections of selected department - shows all marks across all semesters
             if (!selectedDepartment) {
               setAnalysisData([]);
               setIsLoading(false);
@@ -107,12 +99,12 @@ export default function TYLAnalysisPage() {
               const result = await calculateTYLAnalysisAction({
                 department: selectedDepartment,
                 section: sec,
-                semester: parseInt(selectedSemester),
+                semester: selectedSemester ? parseInt(selectedSemester) : undefined,
               });
               data.push(result);
             }
           } else if (analysisType === 'batch') {
-            // Load for all years/batches
+            // Load for all years/batches - shows all marks across all semesters
             if (!selectedDepartment) {
               setAnalysisData([]);
               setIsLoading(false);
@@ -122,7 +114,7 @@ export default function TYLAnalysisPage() {
               const result = await calculateTYLAnalysisAction({
                 department: selectedDepartment,
                 year: parseInt(year),
-                semester: parseInt(selectedSemester),
+                semester: selectedSemester ? parseInt(selectedSemester) : undefined,
               });
               data.push(result);
             }
@@ -548,6 +540,14 @@ export default function TYLAnalysisPage() {
             </TabsList>
 
             <TabsContent value="department" className="p-6 space-y-4">
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>Note</AlertTitle>
+                <AlertDescription>
+                  Analysis shows <strong>all marks across all semesters</strong> for each student, 
+                  allowing you to see complete historical data even after students have been promoted.
+                </AlertDescription>
+              </Alert>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label>Semester (Optional)</Label>
@@ -563,6 +563,14 @@ export default function TYLAnalysisPage() {
             </TabsContent>
 
             <TabsContent value="section" className="p-6 space-y-4">
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>Note</AlertTitle>
+                <AlertDescription>
+                  Analysis shows <strong>all marks across all semesters</strong> for each student, 
+                  allowing you to see complete historical data even after students have been promoted.
+                </AlertDescription>
+              </Alert>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <Label>Department <span className="text-destructive">*</span></Label>
@@ -583,10 +591,11 @@ export default function TYLAnalysisPage() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>Semester <span className="text-destructive">*</span></Label>
-                  <Select value={selectedSemester} onValueChange={setSelectedSemester} required>
-                    <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
+                  <Label>Semester (Optional)</Label>
+                  <Select value={selectedSemester || 'all'} onValueChange={(value) => setSelectedSemester(value === 'all' ? '' : value)}>
+                    <SelectTrigger><SelectValue placeholder="All Semesters" /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="all">All Semesters</SelectItem>
                       {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -595,6 +604,14 @@ export default function TYLAnalysisPage() {
             </TabsContent>
 
             <TabsContent value="batch" className="p-6 space-y-4">
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>Note</AlertTitle>
+                <AlertDescription>
+                  Analysis shows <strong>all marks across all semesters</strong> for each student, 
+                  allowing you to see complete historical data even after students have been promoted.
+                </AlertDescription>
+              </Alert>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <Label>Department <span className="text-destructive">*</span></Label>
@@ -615,10 +632,11 @@ export default function TYLAnalysisPage() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>Semester <span className="text-destructive">*</span></Label>
-                  <Select value={selectedSemester} onValueChange={setSelectedSemester} required>
-                    <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
+                  <Label>Semester (Optional)</Label>
+                  <Select value={selectedSemester || 'all'} onValueChange={(value) => setSelectedSemester(value === 'all' ? '' : value)}>
+                    <SelectTrigger><SelectValue placeholder="All Semesters" /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="all">All Semesters</SelectItem>
                       {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -627,7 +645,15 @@ export default function TYLAnalysisPage() {
             </TabsContent>
 
             <TabsContent value="raw" className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>Note</AlertTitle>
+                <AlertDescription>
+                  Raw marks view shows <strong>all marks across all semesters</strong> for each student, 
+                  allowing you to see complete historical data even after students have been promoted.
+                </AlertDescription>
+              </Alert>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
                   <Label>Department</Label>
                   <Select value={selectedDepartment || 'all'} onValueChange={(value) => setSelectedDepartment(value === 'all' ? '' : value)}>
@@ -649,10 +675,21 @@ export default function TYLAnalysisPage() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>Semester <span className="text-destructive">*</span></Label>
-                  <Select value={selectedSemester} onValueChange={setSelectedSemester} required>
-                    <SelectTrigger><SelectValue placeholder="Select Semester" /></SelectTrigger>
+                  <Label>Year</Label>
+                  <Select value={selectedYear || 'all'} onValueChange={(value) => setSelectedYear(value === 'all' ? '' : value)}>
+                    <SelectTrigger><SelectValue placeholder="All Years" /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="all">All Years</SelectItem>
+                      {YEARS.map(year => <SelectItem key={year} value={year}>Year {year}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Semester (Optional - shows all if not selected)</Label>
+                  <Select value={selectedSemester || 'all'} onValueChange={(value) => setSelectedSemester(value === 'all' ? '' : value)}>
+                    <SelectTrigger><SelectValue placeholder="All Semesters" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Semesters</SelectItem>
                       {SEMESTERS.map(sem => <SelectItem key={sem} value={sem}>Semester {sem}</SelectItem>)}
                     </SelectContent>
                   </Select>

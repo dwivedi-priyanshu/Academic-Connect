@@ -66,6 +66,7 @@ export async function fetchAllTYLMarksAction(
     section?: string;
     year?: number;
     semester?: number;
+    includeAllSemesters?: boolean; // If true, don't filter by semester even if provided
   }
 ): Promise<Array<{ profile: StudentProfile; marks: SubjectMark[] }>> {
   try {
@@ -82,6 +83,8 @@ export async function fetchAllTYLMarksAction(
     if (activeStudentUserIds.length === 0) return [];
 
     // Build student profile query
+    // IMPORTANT: Don't filter by currentSemester - we want to find students based on their department/section/year
+    // regardless of their current semester, so we can see all their historical marks
     const profileQuery: Filter<StudentProfile> = {
       userId: { $in: activeStudentUserIds }
     };
@@ -95,9 +98,8 @@ export async function fetchAllTYLMarksAction(
     if (filters?.year) {
       profileQuery.year = filters.year;
     }
-    if (filters?.semester) {
-      profileQuery.currentSemester = filters.semester;
-    }
+    // NOTE: We intentionally don't filter by currentSemester here
+    // This allows us to see all marks for students even after they've been promoted
 
     const studentProfiles = await studentProfilesCollection.find(profileQuery).toArray();
     if (studentProfiles.length === 0) return [];
@@ -113,7 +115,8 @@ export async function fetchAllTYLMarksAction(
       studentId: { $in: studentUserIds }
     };
 
-    if (filters?.semester) {
+    // Only filter marks by semester if explicitly provided and not including all semesters
+    if (filters?.semester && !filters?.includeAllSemesters) {
       marksQuery.semester = filters.semester;
     }
 
@@ -154,6 +157,7 @@ export async function fetchAllTYLMarksAction(
 }
 
 // Calculate TYL analysis data
+// This function always includes all semesters to show complete historical data for each student
 export async function calculateTYLAnalysisAction(
   filters?: {
     department?: string;
@@ -163,7 +167,12 @@ export async function calculateTYLAnalysisAction(
   }
 ): Promise<TYLAnalysisData> {
   try {
-    const data = await fetchAllTYLMarksAction(filters);
+    // Always include all semesters for analysis - we want to see all marks for each student
+    // regardless of when they were entered or what semester the student is currently in
+    const data = await fetchAllTYLMarksAction({
+      ...filters,
+      includeAllSemesters: true,
+    });
     
     const totalStudents = data.length;
     const passedCounts: Record<string, number> = {};
@@ -270,6 +279,7 @@ export async function calculateTYLAnalysisAction(
 
 // Fetch raw TYL marks for display (no analysis)
 // Returns all TYL marks grouped by student
+// For raw marks, we want to show ALL marks across all semesters for each student
 export async function fetchRawTYLMarksAction(
   filters?: {
     department?: string;
@@ -283,7 +293,12 @@ export async function fetchRawTYLMarksAction(
   marks: SubjectMark[];
 }>> {
   try {
-    const data = await fetchAllTYLMarksAction(filters);
+    // For raw marks view, always include all semesters so we can see historical marks
+    // even after students have been promoted
+    const data = await fetchAllTYLMarksAction({
+      ...filters,
+      includeAllSemesters: true, // Always fetch all semesters for raw marks
+    });
     
     // If subjectCode filter is provided, filter marks
     if (filters?.subjectCode) {

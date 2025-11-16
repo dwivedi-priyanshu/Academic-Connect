@@ -14,7 +14,7 @@ export const TYL_PASSING_MARKS: Record<string, number> = {
   'a1': 50,
   'a2': 50,
   'a3': 50,
-  'a4': 60,
+  'a4': 65,
   
   // Soft Skills
   's1': 50,

@@ -304,11 +304,15 @@ export async function promoteStudentsAction(
       };
     }
 
-    // Update currentSemester for all matching students
-    // IMPORTANT: Only update currentSemester field, do NOT touch any marks
+    // Calculate the new year based on next semester
+    // Year 1: Semesters 1-2, Year 2: Semesters 3-4, Year 3: Semesters 5-6, Year 4: Semesters 7-8
+    const newYear = Math.ceil(nextSemester / 2);
+
+    // Update currentSemester and year for all matching students
+    // IMPORTANT: Only update currentSemester and year fields, do NOT touch any marks
     const updateResult = await studentProfilesCollection.updateMany(
       query,
-      { $set: { currentSemester: nextSemester } }
+      { $set: { currentSemester: nextSemester, year: newYear } }
     );
 
     const promotedCount = updateResult.modifiedCount;

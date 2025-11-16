@@ -38,25 +38,31 @@ const TYL_SUBJECTS = {
     { code: "a4", name: "A4" },
   ],
   core: [
-    { code: "c1", name: "C1" },
-    { code: "c2", name: "C2" },
-    { code: "c3", name: "C3" },
-    { code: "c4", name: "C4" },
+    { code: "c2-odd", name: "C2 (Odd)" },
+    { code: "c2-full", name: "C2 (Full)" },
+    { code: "c3-odd", name: "C3 (Odd)" },
+    { code: "c3-full", name: "C3 (Full)" },
+    { code: "c4-odd", name: "C4 (Odd)" },
+    { code: "c4-full", name: "C4 (Full)" },
+    { code: "c5-full", name: "C5 (Full)" },
   ],
   language: [
     { code: "l1", name: "Language 1" },
     { code: "l2", name: "Language 2" },
     { code: "l3", name: "Language 3" },
+    { code: "l4", name: "Language 4" },
   ],
   programming: [
     { code: "p1", name: "Programming 1" },
     { code: "p2", name: "Programming 2" },
     { code: "p3", name: "Programming 3" },
+    { code: "p4", name: "Programming 4" },
   ],
   "soft skills": [
     { code: "s1", name: "Soft Skills 1" },
     { code: "s2", name: "Soft Skills 2" },
     { code: "s3", name: "Soft Skills 3" },
+    { code: "s4", name: "Soft Skills 4" },
   ],
 };
 
